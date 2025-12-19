@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableWrapper = document.querySelector('.table-wrapper');
     const tooltip = document.getElementById('tweetTooltip');
     const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
     const refreshDetailsBtn = document.getElementById('refreshDetailsBtn');
     const detailStatus = document.getElementById('detailStatus');
     const toastContainer = document.getElementById('toastContainer');
@@ -105,6 +106,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.toLowerCase();
+
+            // Toggle clear button visibility
+            if (clearSearchBtn) {
+                clearSearchBtn.style.display = query.length > 0 ? 'flex' : 'none';
+            }
+
             let filtered = currentData.filter(tweet =>
                 tweet.text.toLowerCase().includes(query)
             );
@@ -115,6 +122,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             renderTable(filtered);
+        });
+    }
+
+    // Clear search button handler
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            clearSearchBtn.style.display = 'none';
+
+            // Re-render table with all data
+            let dataToRender = currentData;
+            if (sortState.column) {
+                dataToRender = sortData(currentData, sortState.column, sortState.direction);
+            }
+            renderTable(dataToRender);
+
+            // Focus back to input
+            searchInput.focus();
         });
     }
 

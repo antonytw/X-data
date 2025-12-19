@@ -886,6 +886,7 @@ const EXTERNAL_ACTION_ICONS = {
   open: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14L21 3"/><path d="M5 5h6M5 5v14h14v-6"/></svg>'
 };
 const TOOLTIP_TEXT_COLLAPSED_HEIGHT = 120;
+const TOOLTIP_PREVIEW_MAX_HEIGHT = 220;
 let externalTooltipTextExpanded = false;
 
 function ensureExternalTooltip() {
@@ -1012,14 +1013,14 @@ function showExternalTooltip(payload) {
   if (preview && preview.url) {
     const escapedUrl = escapeHtmlInline(preview.url);
     previewHtml = `
-      <div style="margin-bottom:10px;border-radius:10px;overflow:hidden;border:1px solid #2f3336;background:#0f1115;position:relative;">
+      <div style="margin-bottom:10px;border-radius:10px;overflow:hidden;border:1px solid #2f3336;background:#0f1115;position:relative;max-height:${TOOLTIP_PREVIEW_MAX_HEIGHT}px;">
         <img src="${escapedUrl}" alt="${escapeHtmlInline(preview.isVideo ? 'Video preview' : 'Tweet image')}" style="width:100%;height:auto;display:block;">
         ${preview.isVideo ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,0.65);color:#f7f9f9;border-radius:6px;padding:2px 6px;font-size:12px;line-height:1;">▶</span>' : ''}
       </div>
     `;
   } else if (preview && preview.isVideo) {
     previewHtml = `
-      <div style="margin-bottom:10px;border-radius:10px;border:1px dashed #2f3336;height:120px;display:flex;align-items:center;justify-content:center;color:#8b98a5;font-size:18px;background:rgba(255,255,255,0.02);">
+      <div style="margin-bottom:10px;border-radius:10px;border:1px dashed #2f3336;height:${Math.min(TOOLTIP_PREVIEW_MAX_HEIGHT, 180)}px;display:flex;align-items:center;justify-content:center;color:#8b98a5;font-size:18px;background:rgba(255,255,255,0.02);">
         ▶ 视频内容
       </div>
     `;
