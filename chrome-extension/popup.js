@@ -34,6 +34,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const isEmbedded = window.parent !== window;
 
+    // Logo click handler - open extensions page for quick reload during development
+    const logo = document.querySelector('.logo');
+    if (logo) {
+        logo.style.cursor = 'pointer';
+        logo.addEventListener('click', () => {
+            chrome.tabs.create({
+                url: 'chrome://extensions/?id=fpppfanjlmbbimolfmngfmdlphefanoh'
+            });
+        });
+    }
+
     const scrapeBtn = document.getElementById('scrapeBtn');
     const autoScrollBtn = document.getElementById('autoScrollBtn');
     const stopBtn = document.getElementById('stopBtn');
