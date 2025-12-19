@@ -669,6 +669,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateDetailStatus('');
                 const toastType = successCount === targets.length ? 'success' : (successCount > 0 ? 'success' : 'error');
                 showToast(`VxTwitter 同步完成，成功 ${successCount}/${targets.length} 条`, toastType, 3000);
+
+                // Notify content script to update its cache
+                sendMessageToActiveTab({ action: "update_cache", data: currentData }, (response) => {
+                    if (response && response.success) {
+                        console.log(`X Data Scraper: Content script cache updated, total: ${response.count}`);
+                    }
+                });
             });
         } else {
             updateDetailStatus('VxTwitter 请求未能更新任何推文。', 'error');

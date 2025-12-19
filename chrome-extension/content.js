@@ -772,6 +772,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     toggleSidebar();
     sendResponse({ success: true, visible: sidebarVisible });
   }
+  else if (request.action === "update_cache") {
+    // AIDEV-NOTE: Critical sync mechanism for VxTwitter data
+    // When popup syncs data via VxTwitter, it must notify content.js to update allTweetsMap
+    // Otherwise, next scrape will overwrite VxTwitter-synced data with old cached data
+    // This ensures data consistency between popup and content script
+    if (request.data && Array.isArray(request.data)) {
+      console.log(`X Data Scraper: Updating cache with ${request.data.length} tweets from VxTwitter sync`);
+      request.data.forEach(tweet => {
+        if (tweet.id) {
+          allTweetsMap.set(tweet.id, tweet);
+        }
+      });
+      saveCache();
+      sendResponse({ success: true, count: allTweetsMap.size });
+    } else {
+      sendResponse({ success: false, error: 'Invalid data format' });
+    }
+  }
 });
 
 function toggleSidebar() {
@@ -978,6 +996,34 @@ function applyExternalTooltipTextCollapse() {
   applyState();
 }
 
+function wireExternalTooltipActions(tweetId, defaultUrl) {
+  if (!externalTooltipEl) return;
+  const buttons = externalTooltipEl.querySelectorAll('[data-tooltip-action]');
+  if (!buttons.length) return;
+
+  buttons.forEach(button => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const targetUrl = button.dataset.targetUrl || defaultUrl || '';
+      if (targetUrl) {
+        if (!navigateWithinPage(tweetId, targetUrl)) {
+          window.location.assign(targetUrl);
+        }
+        hideExternalTooltip();
+        return;
+      }
+
+      const intentUrl = button.dataset.intentUrl;
+      if (intentUrl) {
+        window.location.assign(intentUrl);
+        hideExternalTooltip();
+      }
+    });
+  });
+}
+
 function positionExternalTooltip(rowRect) {
   if (!externalTooltipEl || !rowRect) return;
   const sidebar = document.getElementById(SIDEBAR_ID);
@@ -1026,41 +1072,61 @@ function showExternalTooltip(payload) {
     `;
   }
 
-  const actionLinks = [];
-  if (tweetId) {
-    actionLinks.push({
-      label: '回复',
-      href: `https://twitter.com/intent/tweet?in_reply_to=${tweetId}`,
-      icon: EXTERNAL_ACTION_ICONS.reply
-    });
-    actionLinks.push({
-      label: '转推',
-      href: `https://twitter.com/intent/retweet?tweet_id=${tweetId}`,
-      icon: EXTERNAL_ACTION_ICONS.retweet
-    });
-    actionLinks.push({
-      label: '点赞',
-      href: `https://twitter.com/intent/like?tweet_id=${tweetId}`,
-      icon: EXTERNAL_ACTION_ICONS.like
-    });
-  }
-  if (tweetUrl) {
-    actionLinks.push({
-      label: '打开',
-      href: tweetUrl,
-      icon: EXTERNAL_ACTION_ICONS.open
-    });
-  }
+  const formatStatValue = (value) => {
+    if (value === undefined || value === null) return '0';
+    const str = String(value).trim();
+    return str || '0';
+  };
 
-  const actionsHtml = actionLinks.length ? `
-    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
-      ${actionLinks.map(link => `
-        <a href="${link.href}" target="_blank" rel="noopener noreferrer" title="${link.label}" style="flex:0 0 auto;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:10px;border:1px solid #2f3336;color:#f7f9f9;text-decoration:none;background:rgba(255,255,255,0.03);">
-          ${link.icon}
-        </a>
+  const metricsButtons = [
+    {
+      type: 'reply',
+      label: '回复',
+      icon: EXTERNAL_ACTION_ICONS.reply,
+      count: formatStatValue(stats.replies),
+      intentUrl: tweetId ? `https://twitter.com/intent/tweet?in_reply_to=${tweetId}` : null,
+      targetUrl: tweetUrl || null
+    },
+    {
+      type: 'retweet',
+      label: '转推',
+      icon: EXTERNAL_ACTION_ICONS.retweet,
+      count: formatStatValue(stats.retweets),
+      intentUrl: tweetId ? `https://twitter.com/intent/retweet?tweet_id=${tweetId}` : null,
+      targetUrl: tweetUrl || null
+    },
+    {
+      type: 'like',
+      label: '点赞',
+      icon: EXTERNAL_ACTION_ICONS.like,
+      count: formatStatValue(stats.likes),
+      intentUrl: tweetId ? `https://twitter.com/intent/like?tweet_id=${tweetId}` : null,
+      targetUrl: tweetUrl || null
+    },
+    {
+      type: 'open',
+      label: '浏览',
+      icon: EXTERNAL_ACTION_ICONS.open,
+      count: formatStatValue(stats.views),
+      targetUrl: tweetUrl || null
+    }
+  ];
+
+  const metricsHtml = `
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      ${metricsButtons.map(button => `
+        <button type="button"
+          title="${escapeHtmlInline(button.label)}"
+          data-tooltip-action="${button.type}"
+          ${button.targetUrl ? `data-target-url="${escapeHtmlInline(button.targetUrl)}"` : ''}
+          ${button.intentUrl ? `data-intent-url="${escapeHtmlInline(button.intentUrl)}"` : ''}
+          style="flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 4px;border:none;background:none;color:#b0b7c2;font-size:13px;cursor:pointer;border-radius:999px;">
+          <span style="display:flex;align-items:center;justify-content:center;color:inherit;">${button.icon}</span>
+          <span style="color:#f7f9f9;font-weight:500;">${escapeHtmlInline(button.count)}</span>
+        </button>
       `).join('')}
     </div>
-  ` : '';
+  `;
 
   el.innerHTML = `
     <div style="font-size:12px;color:#8b98a5;margin-bottom:6px;">${escapeHtmlInline(tweet.timestamp || '—')}</div>
@@ -1072,18 +1138,12 @@ function showExternalTooltip(payload) {
       </div>
       <button data-role="tooltip-text-toggle" style="display:none;margin-top:6px;border:none;background:none;color:#1d9bf0;font-weight:600;font-size:13px;cursor:pointer;padding:0;">展开</button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 10px;font-size:12px;color:#b0b7c2;">
-      <span>Views: <b style="color:#f7f9f9;">${escapeHtmlInline(stats.views || '0')}</b></span>
-      <span>Likes: <b style="color:#f7f9f9;">${escapeHtmlInline(stats.likes || '0')}</b></span>
-      <span>RTs: <b style="color:#f7f9f9;">${escapeHtmlInline(stats.retweets || '0')}</b></span>
-      <span>Replies: <b style="color:#f7f9f9;">${escapeHtmlInline(stats.replies || '0')}</b></span>
-      <span>Saves: <b style="color:#f7f9f9;">${escapeHtmlInline(stats.bookmarks || '0')}</b></span>
-    </div>
-    ${actionsHtml}
+    ${metricsHtml}
   `;
   externalTooltipTextExpanded = false;
   el.style.display = 'block';
   applyExternalTooltipTextCollapse();
+  wireExternalTooltipActions(tweetId || null, tweetUrl || '');
   lastTooltipRowRect = payload.rowRect || null;
 
   requestAnimationFrame(() => {
