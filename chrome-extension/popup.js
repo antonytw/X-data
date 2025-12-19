@@ -543,16 +543,32 @@ document.addEventListener('DOMContentLoaded', () => {
             ...tweet
         };
 
+        // Merge text
         const fullText = vxTweet?.full_text || vxTweet?.text || payload.full_text || payload.text;
         if (fullText) {
             merged.text = fullText;
         }
 
+        // Merge timestamp - VxTwitter provides precise timestamp
         const vxTimestamp = parseIsoTimestamp(vxTweet?.created_at || payload.created_at);
         if (vxTimestamp) {
             merged.timestamp = vxTimestamp;
         }
 
+        // Merge stats - VxTwitter provides accurate engagement metrics
+        const vxStats = vxTweet?.stats || vxTweet?.public_metrics || vxTweet?.metrics || {};
+        const existingStats = tweet.stats || {};
+
+        merged.stats = {
+            replies: vxStats.replies ?? vxStats.reply_count ?? existingStats.replies ?? 0,
+            retweets: vxStats.retweets ?? vxStats.retweet_count ?? existingStats.retweets ?? 0,
+            likes: vxStats.likes ?? vxStats.favorite_count ?? vxStats.like_count ?? existingStats.likes ?? 0,
+            views: vxStats.views ?? vxStats.view_count ?? existingStats.views ?? 0,
+            bookmarks: vxStats.bookmarks ?? vxStats.bookmark_count ?? existingStats.bookmarks ?? 0,
+            quotes: vxStats.quotes ?? vxStats.quote_count ?? existingStats.quotes ?? 0
+        };
+
+        // Merge media
         const combinedMedia = dedupeMediaEntries([...(tweet.media || []), ...normalizedMedia]);
         if (combinedMedia.length > 0) {
             merged.media = combinedMedia;
@@ -807,12 +823,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // AIDEV-NOTE: Auto VxTwitter sync strategy after scraping
+    // After scraping, we automatically sync with VxTwitter API to get:
+    // 1. Precise timestamps (hour/minute/second) - scraping only gets dates
+    // 2. Accurate engagement stats (likes, retweets, replies, views)
+    // 3. Complete media URLs and metadata
+    // We use refreshDetailsFromVxTwitter(false) to only sync tweets that need updating:
+    // - Tweets without vxMeta (never synced before)
+    // - Tweets with truncated text
+    // This balances API usage with data quality
     scrapeBtn.addEventListener('click', () => {
         setStatus('Scraping...');
         sendMessageToActiveTab({ action: "scrape" }, (response) => {
             if (response && response.success) {
                 updateUI(response.data);
                 setStatus('Scrape complete!', 'success');
+
+                // Auto-sync with VxTwitter to get precise timestamps and stats
+                setTimeout(() => {
+                    refreshDetailsFromVxTwitter(false);
+                }, 500);
             } else {
                 setStatus('Error scraping view.', 'error');
             }
@@ -838,6 +868,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 autoScrollBtn.style.display = 'inline-block';
                 stopBtn.style.display = 'none';
                 setStatus('Stopped.', 'success');
+
+                // Auto-sync with VxTwitter to get precise timestamps and stats
+                setTimeout(() => {
+                    refreshDetailsFromVxTwitter(false);
+                }, 500);
             }
         });
     });
@@ -846,13 +881,18 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.runtime.onMessage.addListener((request) => {
         if (request.action === "update_count") {
             tweetCountSpan.textContent = request.count;
-            // Optionally update table in real-time if visible, 
+            // Optionally update table in real-time if visible,
             // but might be heavy. Let's just update count for now.
         } else if (request.action === "scroll_finished") {
             updateUI(request.data);
             autoScrollBtn.style.display = 'inline-block';
             stopBtn.style.display = 'none';
             setStatus('Auto-scroll finished.', 'success');
+
+            // Auto-sync with VxTwitter to get precise timestamps and stats
+            setTimeout(() => {
+                refreshDetailsFromVxTwitter(false);
+            }, 500);
         }
     });
 
