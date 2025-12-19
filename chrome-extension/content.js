@@ -472,6 +472,12 @@ function getStatValue(article, testId, iconName) {
   return 0;
 }
 
+// AIDEV-NOTE: Incremental scraping strategy
+// All scraping operations (single scrape and auto-scroll) are INCREMENTAL:
+// - New tweets are added to allTweetsMap
+// - Existing tweets (by ID) are merged/updated with new data
+// - Old tweets are NEVER removed unless user explicitly clears cache
+// This ensures no data loss during multiple scraping sessions
 function scrapeCurrentView() {
   const articles = document.querySelectorAll('article, li div[data-testid="cellInnerDiv"], li');
   let newCount = 0;
@@ -743,8 +749,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!isScrolling) {
       // Ensure we're on analytics page before starting auto-scroll
       ensureOnAnalyticsPage(() => {
-        allTweetsMap.clear();
-        saveCache(); // Clear cache too
+        // Keep existing data - incremental scraping
+        console.log(`X Data Scraper: Starting auto-scroll with ${allTweetsMap.size} existing tweets`);
         autoScrollLoop().then(data => {
           // Final data sent when loop finishes naturally
           chrome.runtime.sendMessage({
