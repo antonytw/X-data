@@ -659,14 +659,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return response.json();
     }
 
-    function maybeTriggerAutoVxSync() {
-        if (vxSyncInProgress) return;
-        if (!currentData || currentData.length === 0) return;
-        const needsSync = currentData.some(tweet => shouldSyncTweet(tweet));
-        if (!needsSync) return;
-        refreshDetailsFromVxTwitter(false);
-    }
-
     async function refreshDetailsFromVxTwitter(force = false) {
         if (vxSyncInProgress) {
             console.log('X Data Scraper: VxTwitter sync already in progress, skipping');
@@ -858,25 +850,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // AIDEV-NOTE: Auto VxTwitter sync strategy after scraping
-    // After scraping, we automatically sync with VxTwitter API to get:
-    // 1. Precise timestamps (hour/minute/second) - scraping only gets dates
-    // 2. Accurate engagement stats (likes, retweets, replies, views)
-    // 3. Complete media URLs and metadata
-    // We use force=true to sync ALL tweets after scraping, not just selective ones
-    // This ensures all scraped data gets updated with precise information from VxTwitter
     scrapeBtn.addEventListener('click', () => {
         setStatus('Scraping...');
         sendMessageToActiveTab({ action: "scrape" }, (response) => {
             if (response && response.success) {
                 updateUI(response.data);
                 setStatus('Scrape complete!', 'success');
-
-                // Auto-sync with VxTwitter to get precise timestamps and stats
-                // Use force=true to update all tweets
-                setTimeout(() => {
-                    refreshDetailsFromVxTwitter(true);
-                }, 500);
             } else {
                 setStatus('Error scraping view.', 'error');
             }
@@ -902,12 +881,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 autoScrollBtn.style.display = 'inline-block';
                 stopBtn.style.display = 'none';
                 setStatus('Stopped.', 'success');
-
-                // Auto-sync with VxTwitter to get precise timestamps and stats
-                // Use force=true to update all tweets
-                setTimeout(() => {
-                    refreshDetailsFromVxTwitter(true);
-                }, 500);
             }
         });
     });
@@ -923,12 +896,6 @@ document.addEventListener('DOMContentLoaded', () => {
             autoScrollBtn.style.display = 'inline-block';
             stopBtn.style.display = 'none';
             setStatus('Auto-scroll finished.', 'success');
-
-            // Auto-sync with VxTwitter to get precise timestamps and stats
-            // Use force=true to update all tweets
-            setTimeout(() => {
-                refreshDetailsFromVxTwitter(true);
-            }, 500);
         }
     });
 
