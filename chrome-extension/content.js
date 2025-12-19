@@ -7,6 +7,20 @@ let sidebarVisible = false;
 // Configuration
 const SIDEBAR_WIDTH = 400;
 const SIDEBAR_ID = 'x-data-scraper-sidebar';
+const ROUTER_METHOD_NAMES = ['push', 'navigate', 'route', 'go', 'open', 'transitionTo', 'replace'];
+const ROUTER_PATH_CANDIDATES = [
+  ['__NEXT_ROUTER__'],
+  ['next', 'router'],
+  ['__ROUTER__'],
+  ['__router'],
+  ['__NUXT__', '$router'],
+  ['__NUXT__', 'router'],
+  ['__X', 'router'],
+  ['__X', 'navigator'],
+  ['app', 'router'],
+  ['__TWITTER_ROUTER__'],
+  ['__twttr', 'router']
+];
 
 // Load cached data on init
 chrome.storage.local.get(['cached_tweets'], (result) => {
@@ -167,24 +181,160 @@ function simulateTweetLinkClick(link) {
   }
 }
 
-function navigateWithinPage(tweetId, targetUrl) {
-  const link = findInPageTweetLink(tweetId, targetUrl);
-  if (!link) return false;
-  const prevUrl = window.location.href;
-  const targetComparable = normalizeUrlForComparison(targetUrl);
-  const prevComparable = normalizeUrlForComparison(prevUrl);
-  const success = simulateTweetLinkClick(link);
-  if (!success) return false;
-  if (prevComparable === targetComparable) {
-    return true;
-  }
-  // If SPA router doesn't pick it up quickly, fall back after a short delay.
-  setTimeout(() => {
-    const currentComparable = normalizeUrlForComparison(window.location.href);
-    if (currentComparable === prevComparable) {
-      window.location.assign(targetUrl);
+function createSyntheticTweetLink(tweetId, targetUrl) {
+  if (!targetUrl) return null;
+  const anchor = document.createElement('a');
+  anchor.href = targetUrl;
+  anchor.target = '_self';
+  anchor.setAttribute('role', 'link');
+  anchor.setAttribute('tabindex', '-1');
+  anchor.dataset.xDataSyntheticLink = 'true';
+  anchor.style.position = 'fixed';
+  anchor.style.top = '-1000px';
+  anchor.style.left = '-1000px';
+  anchor.style.width = '1px';
+  anchor.style.height = '1px';
+  anchor.style.opacity = '0';
+  anchor.style.pointerEvents = 'none';
+  anchor.textContent = tweetId ? `tweet-${tweetId}` : 'tweet';
+  document.body.appendChild(anchor);
+  return anchor;
+}
+
+function getByPath(root, path) {
+  return path.reduce((acc, key) => {
+    if (!acc) return null;
+    try {
+      return acc[key];
+    } catch {
+      return null;
     }
-  }, 600);
+  }, root);
+}
+
+function collectRouterCandidates() {
+  const candidates = new Set();
+  ROUTER_PATH_CANDIDATES.forEach(path => {
+    const candidate = getByPath(window, path);
+    if (candidate && typeof candidate === 'object') {
+      candidates.add(candidate);
+    }
+  });
+
+  if (candidates.size === 0) {
+    try {
+      Object.getOwnPropertyNames(window).forEach(key => {
+        if (!/router/i.test(key)) return;
+        const candidate = window[key];
+        if (candidate && typeof candidate === 'object') {
+          candidates.add(candidate);
+        }
+      });
+    } catch (err) {
+      console.warn('X Data Scraper: router scan failed', err);
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+function invokeRouter(candidate, targetUrl) {
+  if (!candidate) return false;
+  for (const method of ROUTER_METHOD_NAMES) {
+    const fn = candidate[method];
+    if (typeof fn === 'function') {
+      try {
+        const result = fn.call(candidate, targetUrl);
+        if (result && typeof result.then === 'function') {
+          result.catch(err => console.warn('X Data Scraper: router promise rejected', err));
+        }
+        return true;
+      } catch (err) {
+        console.warn('X Data Scraper: router navigation failed', err);
+      }
+    }
+  }
+  return false;
+}
+
+function attemptHistoryNavigation(targetUrl) {
+  try {
+    const parsed = new URL(targetUrl, window.location.href);
+    if (parsed.origin !== window.location.origin) return false;
+    window.history.pushState({}, '', parsed.href);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+    return true;
+  } catch (err) {
+    console.warn('X Data Scraper: history navigation failed', err);
+    return false;
+  }
+}
+
+function attemptRouterNavigation(targetUrl) {
+  const candidates = collectRouterCandidates();
+  for (const candidate of candidates) {
+    if (invokeRouter(candidate, targetUrl)) {
+      return true;
+    }
+  }
+  return attemptHistoryNavigation(targetUrl);
+}
+
+function attemptLinkNavigation(tweetId, targetUrl) {
+  let link = findInPageTweetLink(tweetId, targetUrl);
+  let synthetic = false;
+  if (!link) {
+    link = createSyntheticTweetLink(tweetId, targetUrl);
+    synthetic = !!link;
+  }
+  if (!link) return false;
+  const success = simulateTweetLinkClick(link);
+  if (synthetic) {
+    setTimeout(() => {
+      try {
+        if (link && link.dataset.xDataSyntheticLink) {
+          link.remove();
+        }
+      } catch { }
+    }, 0);
+  }
+  return success;
+}
+
+function monitorNavigationTransition(prevComparable, targetComparable, targetUrl) {
+  if (!targetComparable) return;
+  if (prevComparable === targetComparable) return;
+  const maxWait = 2000;
+  const interval = 150;
+  const start = Date.now();
+
+  const check = () => {
+    const currentComparable = normalizeUrlForComparison(window.location.href);
+    if (currentComparable === targetComparable) return;
+    if (currentComparable !== prevComparable && currentComparable !== '') return;
+    if (Date.now() - start >= maxWait) {
+      window.location.assign(targetUrl);
+      return;
+    }
+    setTimeout(check, interval);
+  };
+
+  setTimeout(check, 200);
+}
+
+function navigateWithinPage(tweetId, targetUrl) {
+  if (!targetUrl) return false;
+  const prevComparable = normalizeUrlForComparison(window.location.href);
+  const targetComparable = normalizeUrlForComparison(targetUrl);
+
+  let initiated = attemptRouterNavigation(targetUrl);
+  if (!initiated) {
+    initiated = attemptLinkNavigation(tweetId, targetUrl);
+  }
+
+  if (!initiated) return false;
+
+  monitorNavigationTransition(prevComparable, targetComparable, targetUrl);
   return true;
 }
 
@@ -631,6 +781,34 @@ function adjustXLayout(visible) {
     }
   });
 }
+
+function ensureSidebarVisible() {
+  let sidebar = document.getElementById(SIDEBAR_ID);
+  if (sidebar) {
+    sidebar.style.display = 'block';
+    sidebarVisible = true;
+    adjustXLayout(true);
+    return;
+  }
+  createSidebar();
+}
+
+function initSidebarAutoDisplay() {
+  const init = () => {
+    try {
+      ensureSidebarVisible();
+    } catch (err) {
+      console.error('X Data Scraper: Failed to initialize sidebar', err);
+    }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+}
+
+initSidebarAutoDisplay();
 
 // Tooltip handling for embedded sidebar (to show outside iframe)
 let externalTooltipEl = null;
