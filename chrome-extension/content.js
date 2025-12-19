@@ -7,6 +7,7 @@ let sidebarVisible = false;
 // Configuration
 const SIDEBAR_WIDTH = 400;
 const SIDEBAR_ID = 'x-data-scraper-sidebar';
+const ANALYTICS_PAGE_URL = 'https://x.com/i/account_analytics/content?type=posts&sort=date&dir=desc&days=90';
 const ROUTER_METHOD_NAMES = ['push', 'navigate', 'route', 'go', 'open', 'transitionTo', 'replace'];
 const ROUTER_PATH_CANDIDATES = [
   ['__NEXT_ROUTER__'],
@@ -676,29 +677,73 @@ async function autoScrollLoop() {
   return Array.from(allTweetsMap.values());
 }
 
+// Check if current page is the analytics page
+function isOnAnalyticsPage() {
+  const currentPath = window.location.pathname + window.location.search;
+  return currentPath.includes('/i/account_analytics/content');
+}
+
+// Navigate to analytics page and wait for it to load
+function ensureOnAnalyticsPage(callback) {
+  if (isOnAnalyticsPage()) {
+    callback();
+    return;
+  }
+
+  console.log('X Data Scraper: Not on analytics page, navigating...');
+
+  // Set up a listener for when navigation completes
+  const checkInterval = setInterval(() => {
+    if (isOnAnalyticsPage()) {
+      clearInterval(checkInterval);
+      // Wait a bit more for content to load
+      setTimeout(() => {
+        console.log('X Data Scraper: Analytics page loaded, ready to scrape');
+        callback();
+      }, 1500);
+    }
+  }, 500);
+
+  // Navigate to the analytics page
+  navigateWithinPage(null, ANALYTICS_PAGE_URL);
+
+  // Timeout fallback
+  setTimeout(() => {
+    clearInterval(checkInterval);
+    if (!isOnAnalyticsPage()) {
+      console.warn('X Data Scraper: Failed to navigate to analytics page');
+    }
+  }, 10000);
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "scrape") {
-    // Single scrape
-    scrapeCurrentView();
-    sendResponse({ success: true, data: Array.from(allTweetsMap.values()) });
+    // Ensure we're on analytics page before scraping
+    ensureOnAnalyticsPage(() => {
+      scrapeCurrentView();
+      sendResponse({ success: true, data: Array.from(allTweetsMap.values()) });
+    });
+    return true; // Keep message channel open for async response
   }
   else if (request.action === "start_scroll") {
     if (!isScrolling) {
-      // Reset or Keep? Let's keep adding if user wants to continue? 
-      // Or clear? Let's assume clear for a fresh "Auto Scroll Scrape" unless we want to append.
-      // For simplicity: clear map on new auto-scroll start.
-      allTweetsMap.clear();
-      saveCache(); // Clear cache too
-      autoScrollLoop().then(data => {
-        // Final data sent when loop finishes naturally
-        chrome.runtime.sendMessage({
-          action: "scroll_finished",
-          data: data
+      // Ensure we're on analytics page before starting auto-scroll
+      ensureOnAnalyticsPage(() => {
+        allTweetsMap.clear();
+        saveCache(); // Clear cache too
+        autoScrollLoop().then(data => {
+          // Final data sent when loop finishes naturally
+          chrome.runtime.sendMessage({
+            action: "scroll_finished",
+            data: data
+          });
         });
+        sendResponse({ success: true, status: "started" });
       });
+      return true; // Keep message channel open for async response
     }
-    sendResponse({ success: true, status: "started" });
+    sendResponse({ success: true, status: "already_running" });
   }
   else if (request.action === "stop_scroll") {
     isScrolling = false;
@@ -828,7 +873,7 @@ function ensureExternalTooltip() {
   externalTooltipEl.id = 'x-data-scraper-external-tooltip';
   externalTooltipEl.style.cssText = `
     position: fixed;
-    width: 700px;
+    width: 400px;
     max-width: 720px;
     background: #111217;
     color: #f7f9f9;
