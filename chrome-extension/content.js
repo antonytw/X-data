@@ -527,28 +527,31 @@ function parseTimestampFromString(str) {
 
 function extractTimestamp(article) {
   const seen = new Set();
-  const consider = (value) => {
+  const consider = (value, source) => {
     if (!value || seen.has(value)) return null;
     seen.add(value);
     const parsed = parseTimestampFromString(value);
+    if (parsed) {
+      console.log(`[Timestamp] Extracted from ${source}: "${value}" -> "${parsed}"`);
+    }
     return parsed;
   };
 
   const timeNode = article.querySelector('time');
   if (timeNode) {
     const attr = timeNode.getAttribute('datetime') || timeNode.getAttribute('title');
-    const direct = consider(attr);
+    const direct = consider(attr, 'time[datetime/title]');
     if (direct) return direct;
-    const indirect = consider(timeNode.textContent);
+    const indirect = consider(timeNode.textContent, 'time.textContent');
     if (indirect) return indirect;
   }
 
   const timestampLink = article.querySelector('a[href*="/status/"][role="link"], a[href*="/status/"][aria-label]');
   if (timestampLink) {
     const attr = timestampLink.getAttribute('aria-label') || timestampLink.getAttribute('title');
-    const parsedFromAttr = consider(attr);
+    const parsedFromAttr = consider(attr, 'link[aria-label/title]');
     if (parsedFromAttr) return parsedFromAttr;
-    const parsedFromText = consider(timestampLink.textContent);
+    const parsedFromText = consider(timestampLink.textContent, 'link.textContent');
     if (parsedFromText) return parsedFromText;
   }
 
@@ -559,7 +562,7 @@ function extractTimestamp(article) {
   if (bulletSpan && bulletSpan.nextElementSibling) {
     const sibling = bulletSpan.nextElementSibling;
     if (sibling) {
-      const parsed = consider(sibling.textContent);
+      const parsed = consider(sibling.textContent, 'bullet separator sibling');
       if (parsed) return parsed;
     }
   }
@@ -573,10 +576,11 @@ function extractTimestamp(article) {
     if (!text) continue;
     if (!/\d/.test(text)) continue;
     if (!(/[年月]/.test(text) || /\d{1,2}:\d{2}/.test(text) || /[A-Za-z]{3,}/.test(text))) continue;
-    const parsed = consider(text);
+    const parsed = consider(text, 'broad scan');
     if (parsed) return parsed;
   }
 
+  console.warn('[Timestamp] Failed to extract timestamp from article');
   return null;
 }
 
@@ -1094,7 +1098,7 @@ const EXTERNAL_ACTION_ICONS = {
   open: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M7 19V11"/><path d="M12 19V5"/><path d="M17 19v-7"/></svg>'
 };
 const TOOLTIP_TEXT_COLLAPSED_HEIGHT = 120;
-const TOOLTIP_PREVIEW_MAX_HEIGHT = 220;
+const TOOLTIP_PREVIEW_MAX_HEIGHT = 500;
 const INLINE_ACTION_TEST_IDS = {
   reply: 'reply',
   retweet: 'retweet',
@@ -1124,7 +1128,7 @@ function ensureExternalTooltip() {
   externalTooltipEl.id = 'x-data-scraper-external-tooltip';
   externalTooltipEl.style.cssText = `
     position: fixed;
-    width: 400px;
+    width: 528px;
     max-width: 720px;
     background: #111217;
     color: #f7f9f9;
@@ -1422,8 +1426,8 @@ function showExternalTooltip(payload) {
   if (preview && preview.url) {
     const escapedUrl = escapeHtmlInline(preview.url);
     previewHtml = `
-      <div style="margin-bottom:10px;border-radius:10px;overflow:hidden;border:1px solid #2f3336;background:#0f1115;position:relative;max-height:${TOOLTIP_PREVIEW_MAX_HEIGHT}px;">
-        <img src="${escapedUrl}" alt="${escapeHtmlInline(preview.isVideo ? 'Video preview' : 'Tweet image')}" style="width:100%;height:auto;display:block;">
+      <div style="margin-bottom:10px;border-radius:10px;overflow:hidden;border:1px solid #2f3336;background:#0f1115;position:relative;height:${TOOLTIP_PREVIEW_MAX_HEIGHT}px;">
+        <img src="${escapedUrl}" alt="${escapeHtmlInline(preview.isVideo ? 'Video preview' : 'Tweet image')}" style="width:100%;height:100%;display:block;object-fit:cover;object-position:center;">
         ${preview.isVideo ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,0.65);color:#f7f9f9;border-radius:6px;padding:2px 6px;font-size:12px;line-height:1;">▶</span>' : ''}
       </div>
     `;
@@ -1548,6 +1552,12 @@ window.addEventListener('message', (event) => {
     if (!targetUrl) return;
     if (!navigateWithinPage(payload.tweetId, targetUrl)) {
       window.location.assign(targetUrl);
+    }
+  } else if (action === 'navigate_to_search') {
+    const searchUrl = payload.url;
+    if (!searchUrl) return;
+    if (!navigateWithinPage(null, searchUrl)) {
+      window.location.assign(searchUrl);
     }
   }
 });

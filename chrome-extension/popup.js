@@ -35,6 +35,186 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearStorageBtn = document.getElementById('clearStorageBtn');
     const scenarioStorageList = document.getElementById('scenarioStorageList');
 
+    // Search view elements
+    const searchQueryList = document.getElementById('searchQueryList');
+    const searchEditModal = document.getElementById('searchEditModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const searchLabelInput = document.getElementById('searchLabel');
+    const searchQueryInput = document.getElementById('searchQuery');
+    const modalCloseBtn = document.getElementById('modalCloseBtn');
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
+    const modalSaveBtn = document.getElementById('modalSaveBtn');
+
+    let currentEditIndex = -1;
+
+    // Modal functions
+    function openModal(title, label = '', query = '', index = -1) {
+        modalTitle.textContent = title;
+        searchLabelInput.value = label;
+        searchQueryInput.value = query;
+        currentEditIndex = index;
+        searchEditModal.classList.remove('hidden');
+        searchLabelInput.focus();
+    }
+
+    function closeModal() {
+        searchEditModal.classList.add('hidden');
+        searchLabelInput.value = '';
+        searchQueryInput.value = '';
+        currentEditIndex = -1;
+    }
+
+    function saveModal() {
+        const label = searchLabelInput.value.trim();
+        const query = searchQueryInput.value.trim();
+
+        if (!label) {
+            showToast('Label is required', 'error', 2000);
+            searchLabelInput.focus();
+            return;
+        }
+
+        if (!query) {
+            showToast('Query is required', 'error', 2000);
+            searchQueryInput.focus();
+            return;
+        }
+
+        if (currentEditIndex === -1) {
+            // Add new search
+            const newSearch = {
+                id: 'custom_' + Date.now(),
+                label,
+                query
+            };
+            customSearches.push(newSearch);
+            showToast('Search added', 'success', 2000);
+        } else {
+            // Edit existing search
+            customSearches[currentEditIndex] = {
+                ...customSearches[currentEditIndex],
+                label,
+                query
+            };
+            showToast('Search updated', 'success', 2000);
+        }
+
+        saveCustomSearches();
+        renderSearchQueryList();
+        closeModal();
+    }
+
+    // Modal event listeners
+    if (modalCloseBtn) {
+        modalCloseBtn.addEventListener('click', closeModal);
+    }
+
+    if (modalCancelBtn) {
+        modalCancelBtn.addEventListener('click', closeModal);
+    }
+
+    if (modalSaveBtn) {
+        modalSaveBtn.addEventListener('click', saveModal);
+    }
+
+    // Close modal on overlay click
+    if (searchEditModal) {
+        searchEditModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeModal();
+            }
+        });
+    }
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !searchEditModal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+
+    // Storage keys
+    const CUSTOM_SEARCHES_KEY = 'x_data_custom_searches';
+
+    // Default preset search queries
+    const DEFAULT_SEARCHES = [
+        {
+            id: 'nano_banana_pro',
+            label: 'Nano Banana Pro',
+            query: '(#NanoBananaPro OR #NanoBanana OR "Nano Banana") and -female -woman -hair since_time:{{NOW-24h}} min_faves:100 filter:media -filter:replies'
+        },
+        {
+            id: 'example_search_2',
+            label: 'Example Search 2',
+            query: 'your search query here since:{{NOW-7d}}'
+        }
+    ];
+
+    let customSearches = [];
+
+    // Load custom searches from storage
+    function loadCustomSearches() {
+        try {
+            const stored = localStorage.getItem(CUSTOM_SEARCHES_KEY);
+            if (stored) {
+                customSearches = JSON.parse(stored);
+            } else {
+                customSearches = [...DEFAULT_SEARCHES];
+                saveCustomSearches();
+            }
+        } catch (err) {
+            console.error('Failed to load custom searches:', err);
+            customSearches = [...DEFAULT_SEARCHES];
+        }
+    }
+
+    function saveCustomSearches() {
+        try {
+            localStorage.setItem(CUSTOM_SEARCHES_KEY, JSON.stringify(customSearches));
+        } catch (err) {
+            console.error('Failed to save custom searches:', err);
+        }
+    }
+
+    // Parse variables in search query
+    function parseSearchVariables(query) {
+        if (!query) return query;
+
+        const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
+
+        return query.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
+            variable = variable.trim();
+
+            // Handle NOW with time offset
+            if (variable.startsWith('NOW')) {
+                if (variable === 'NOW') {
+                    return now.toString();
+                }
+
+                // Parse offset like NOW-24h, NOW-7d, NOW-30d
+                const offsetMatch = variable.match(/NOW([+-])(\d+)([hdwmy])/);
+                if (offsetMatch) {
+                    const [, sign, amount, unit] = offsetMatch;
+                    const multiplier = sign === '-' ? -1 : 1;
+                    const value = parseInt(amount);
+
+                    let seconds = 0;
+                    switch (unit) {
+                        case 'h': seconds = value * 3600; break;
+                        case 'd': seconds = value * 86400; break;
+                        case 'w': seconds = value * 604800; break;
+                        case 'm': seconds = value * 2592000; break; // 30 days
+                        case 'y': seconds = value * 31536000; break;
+                    }
+
+                    return (now + multiplier * seconds).toString();
+                }
+            }
+
+            return match; // Return original if not recognized
+        });
+    }
+
     const isEmbedded = window.parent !== window;
 
     // Logo click handler - open extensions page for quick reload during development
@@ -410,6 +590,110 @@ document.addEventListener('DOMContentLoaded', () => {
             dataScenarioTabs.appendChild(button);
         });
         updateDataScenarioTabsState();
+    }
+
+    function renderSearchQueryList() {
+        if (!searchQueryList) return;
+        searchQueryList.innerHTML = '';
+
+        // Add "New Search" button
+        const addButton = document.createElement('button');
+        addButton.className = 'add-search-btn';
+        addButton.type = 'button';
+        addButton.innerHTML = '<i class="ri-add-line"></i> Add Search';
+        addButton.addEventListener('click', () => addNewSearch());
+        searchQueryList.appendChild(addButton);
+
+        customSearches.forEach((search, index) => {
+            const item = document.createElement('div');
+            item.className = 'scenario-item';
+            item.dataset.searchId = search.id;
+
+            item.innerHTML = `
+                <div class="scenario-info">
+                    <div class="scenario-title">${escapeHtml(search.label)}</div>
+                    <div class="scenario-subtitle">
+                        <span class="scenario-meta search-query-preview">${escapeHtml(search.query)}</span>
+                    </div>
+                </div>
+                <div class="scenario-actions">
+                    <button type="button" class="scenario-action-btn edit-btn" data-action="edit" title="Edit">
+                        <i class="ri-edit-line"></i>
+                    </button>
+                    <button type="button" class="scenario-action-btn delete-btn" data-action="delete" title="Delete">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                    <button type="button" class="scenario-action-btn search-execute-btn" data-action="execute">Execute</button>
+                </div>
+            `;
+
+            const editBtn = item.querySelector('.edit-btn');
+            const deleteBtn = item.querySelector('.delete-btn');
+            const executeBtn = item.querySelector('.search-execute-btn');
+
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                editSearch(index);
+            });
+
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteSearch(index);
+            });
+
+            executeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                executeSearch(search);
+            });
+
+            searchQueryList.appendChild(item);
+        });
+    }
+
+    function addNewSearch() {
+        openModal('Add Search', '', '');
+    }
+
+    function editSearch(index) {
+        const search = customSearches[index];
+        if (!search) return;
+        openModal('Edit Search', search.label, search.query, index);
+    }
+
+    function deleteSearch(index) {
+        const search = customSearches[index];
+        if (!search) return;
+
+        if (!confirm(`Delete search "${search.label}"?`)) return;
+
+        customSearches.splice(index, 1);
+        saveCustomSearches();
+        renderSearchQueryList();
+        showToast('Search deleted', 'success', 2000);
+    }
+
+    function executeSearch(search) {
+        // Parse variables in query before executing
+        const parsedQuery = parseSearchVariables(search.query);
+        const encodedQuery = encodeURIComponent(parsedQuery);
+        const searchUrl = `https://x.com/search?q=${encodedQuery}&src=typed_query`;
+
+        if (isEmbedded) {
+            // In embedded mode, send message to content script for SPA navigation
+            postToParent('navigate_to_search', {
+                url: searchUrl,
+                label: search.label
+            });
+            showToast(`Opening search: ${search.label}`, 'success', 2000);
+        } else {
+            // In popup mode, open in current tab
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.update(tabs[0].id, { url: searchUrl });
+                    showToast(`Opening search: ${search.label}`, 'success', 2000);
+                }
+            });
+        }
     }
 
     function setScenarioData(id, data, { persist = true, refreshView = true } = {}) {
@@ -814,6 +1098,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     renderDataScenarioTabs();
+    loadCustomSearches();
+    renderSearchQueryList();
     bootstrapScenarioDataFromStorage();
 
     // Initialize time range selector
@@ -1350,24 +1636,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Merge timestamp - VxTwitter provides precise timestamp
+        // VxTwitter API returns timestamp in multiple formats:
+        // - date_epoch: Unix timestamp in seconds (most reliable)
+        // - date: Human-readable date string (fallback)
+        // - created_at: Legacy field (for compatibility)
         const vxCreatedAt = vxTweet?.date || vxTweet?.created_at || payload.date || payload.created_at;
         const vxDateEpoch = vxTweet?.date_epoch || payload.date_epoch;
 
-        console.log(`[VxTwitter] Tweet ${tweet.id}: date="${vxCreatedAt}", date_epoch=${vxDateEpoch}, original="${tweet.timestamp}"`);
-
         let vxTimestamp = null;
+
+        // Prefer date_epoch as it's most reliable
         if (vxDateEpoch) {
-            // Convert Unix timestamp (seconds) to ISO string
-            vxTimestamp = new Date(vxDateEpoch * 1000).toISOString();
-        } else if (vxCreatedAt) {
+            const epoch = Number(vxDateEpoch);
+            if (!isNaN(epoch) && epoch > 0) {
+                const date = new Date(epoch * 1000);
+                if (!isNaN(date.getTime())) {
+                    vxTimestamp = date.toISOString();
+                }
+            }
+        }
+
+        // Fallback to parsing date string
+        if (!vxTimestamp && vxCreatedAt) {
             vxTimestamp = parseIsoTimestamp(vxCreatedAt);
         }
 
         if (vxTimestamp) {
-            console.log(`[VxTwitter] Tweet ${tweet.id}: Updating timestamp from "${tweet.timestamp}" to "${vxTimestamp}"`);
+            console.log(`[DEBUG] Tweet ${tweet.id}: Updating timestamp from "${tweet.timestamp}" to "${vxTimestamp}"`);
             merged.timestamp = vxTimestamp;
         } else {
-            console.warn(`[VxTwitter] Tweet ${tweet.id}: Failed to parse timestamp from date="${vxCreatedAt}", epoch=${vxDateEpoch}`);
+            console.warn(`[DEBUG] Tweet ${tweet.id}: Failed to parse timestamp. date_epoch=${vxDateEpoch}, date="${vxCreatedAt}"`);
         }
 
         // Merge stats - VxTwitter provides accurate engagement metrics
@@ -1463,24 +1761,74 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Limit to 50 tweets per sync to avoid rate limiting
+        const MAX_SYNC_COUNT = 50;
+        const syncTargets = targets.slice(0, MAX_SYNC_COUNT);
+
+        if (targets.length > MAX_SYNC_COUNT) {
+            showToast(`检测到 ${targets.length} 条推文需要同步，本次将同步前 ${MAX_SYNC_COUNT} 条`, 'info', 3000);
+        }
+
         vxSyncInProgress = true;
         setRefreshButtonState(true);
-        updateDetailStatus(`正在通过 VxTwitter 获取 ${targets.length} 条推文详情...`);
+        updateDetailStatus(`正在通过 VxTwitter 获取 ${syncTargets.length} 条推文详情...`);
 
         const updates = new Map();
         let successCount = 0;
+        let rateLimitHit = false;
 
-        for (let i = 0; i < targets.length; i++) {
-            const tweet = targets[i];
-            try {
-                const payload = await fetchVxTwitterDetails(tweet.id);
-                console.log(`[VxTwitter] Response for tweet ${tweet.id}:`, JSON.stringify(payload, null, 2));
-                const merged = mergeTweetWithVxData(tweet, payload);
-                updates.set(tweet.id, merged);
-                successCount++;
-                updateDetailStatus(`已更新 ${successCount}/${targets.length} 条推文...`);
-            } catch (error) {
-                console.error(`X Data Scraper: Failed to fetch VxTwitter details for ${tweet.id}`, error);
+        // Process in batches with concurrency
+        const BATCH_SIZE = 5; // Process 5 tweets concurrently
+        const BATCH_DELAY = 1000; // 1 second delay between batches
+
+        for (let i = 0; i < syncTargets.length; i += BATCH_SIZE) {
+            const batch = syncTargets.slice(i, i + BATCH_SIZE);
+
+            // Process batch concurrently
+            const batchPromises = batch.map(async (tweet) => {
+                try {
+                    const payload = await fetchVxTwitterDetails(tweet.id);
+                    console.log(`[DEBUG] VxTwitter raw response for ${tweet.id}:`, {
+                        date: payload.date,
+                        date_epoch: payload.date_epoch,
+                        tweet_date: payload.tweet?.date,
+                        tweet_date_epoch: payload.tweet?.date_epoch
+                    });
+                    const merged = mergeTweetWithVxData(tweet, payload);
+                    return { success: true, id: tweet.id, merged };
+                } catch (error) {
+                    console.error(`X Data Scraper: Failed to fetch VxTwitter details for ${tweet.id}`, error);
+
+                    // Check if it's a rate limit error
+                    if (error.message && error.message.includes('429')) {
+                        return { success: false, rateLimited: true };
+                    }
+                    return { success: false, rateLimited: false };
+                }
+            });
+
+            const results = await Promise.all(batchPromises);
+
+            // Process results
+            for (const result of results) {
+                if (result.success) {
+                    updates.set(result.id, result.merged);
+                    successCount++;
+                } else if (result.rateLimited) {
+                    rateLimitHit = true;
+                    showToast('VxTwitter API 速率限制，请稍后再试', 'error', 3000);
+                    break;
+                }
+            }
+
+            updateDetailStatus(`已更新 ${successCount}/${syncTargets.length} 条推文...`);
+
+            // Stop if rate limited
+            if (rateLimitHit) break;
+
+            // Add delay between batches (except for the last batch)
+            if (i + BATCH_SIZE < syncTargets.length) {
+                await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
             }
         }
 
@@ -1489,8 +1837,18 @@ document.addEventListener('DOMContentLoaded', () => {
             currentData = currentData.map(tweet => updatedIds.has(tweet.id) ? updates.get(tweet.id) : tweet);
             updateUI(currentData, activeDataScenarioId);
             updateDetailStatus('');
-            const toastType = successCount === targets.length ? 'success' : (successCount > 0 ? 'success' : 'error');
-            showToast(`VxTwitter 同步完成，成功 ${successCount}/${targets.length} 条`, toastType, 3000);
+
+            let message = `VxTwitter 同步完成，成功 ${successCount}/${syncTargets.length} 条`;
+            if (rateLimitHit) {
+                message += '（遇到速率限制，已停止）';
+            }
+            if (targets.length > syncTargets.length) {
+                const remaining = targets.length - syncTargets.length;
+                message += `，还有 ${remaining} 条待同步`;
+            }
+
+            const toastType = rateLimitHit ? 'info' : (successCount === syncTargets.length ? 'success' : 'success');
+            showToast(message, toastType, 4000);
 
             // Notify content script to update its cache
             sendMessageToActiveTab({ action: "update_cache", scenarioId: activeDataScenarioId, data: currentData }, (response) => {
@@ -1499,7 +1857,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         } else {
-            updateDetailStatus('VxTwitter 请求未能更新任何推文。', 'error');
+            if (rateLimitHit) {
+                updateDetailStatus('VxTwitter API 速率限制，请稍后再试。', 'error');
+            } else {
+                updateDetailStatus('VxTwitter 请求未能更新任何推文。', 'error');
+            }
         }
 
         setRefreshButtonState(false);
@@ -1669,7 +2031,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create text with each link on a new line
         const text = tweetLinks.join('\n');
 
-        // Use fallback method for popup pages where Clipboard API may be blocked
+        // AIDEV-NOTE: document.execCommand('copy') is deprecated but still widely supported
+        // We use it as a fallback for popup pages where Clipboard API may be blocked
+        // Consider migrating to Clipboard API with proper permissions when Chrome supports it in popups
         const textarea = document.createElement('textarea');
         textarea.value = text;
         textarea.style.position = 'fixed';
@@ -1679,7 +2043,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const success = document.execCommand('copy');
-            document.body.removeChild(textarea);
 
             if (success) {
                 if (copyBtn) {
@@ -1693,9 +2056,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('复制失败，请重试', 'error', 2000);
             }
         } catch (err) {
-            document.body.removeChild(textarea);
             console.error('X Data Scraper: Failed to copy tweet links', err);
             showToast(`复制失败: ${err.message}`, 'error', 3000);
+        } finally {
+            // Always cleanup textarea
+            if (textarea.parentNode) {
+                document.body.removeChild(textarea);
+            }
         }
     });
 

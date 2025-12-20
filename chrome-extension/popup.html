@@ -17,70 +17,64 @@
         <span>X Data Scraper</span>
       </div>
       <div class="tabs">
-        <div class="tab active" data-tab="console">Console</div>
-        <div class="tab" data-tab="data">Data</div>
+        <div class="tab active" data-tab="data">Data</div>
+        <div class="tab" data-tab="search">Search</div>
+        <div class="tab" data-tab="console">Console</div>
         <div class="tab" data-tab="storage">Storage</div>
       </div>
     </div>
 
     <!-- Console View -->
-    <div id="console-view" class="view active">
+    <div id="console-view" class="view">
       <p class="description">Select a scraping scenario to start collecting data.</p>
 
-      <div class="scenario-list glass-card">
-        <div class="card-glow"></div>
-        <div class="scenario-list-header">
-          <h4>Scraping Scenarios</h4>
-          <p>Select a scenario to start collecting data</p>
+      <div class="scenario-items-list">
+        <div class="scenario-item" data-scenario="analytics_auto">
+          <div class="scenario-info">
+            <div class="scenario-title">My Posts</div>
+            <div class="scenario-subtitle">
+              <span class="scenario-meta">90 days · Auto-scroll</span>
+              <span class="scenario-data-count" data-scenario-id="analytics_auto">Tweets: <b>0</b> · Images:
+                <b>0</b></span>
+            </div>
+            <div class="time-range-selector">
+              <button class="time-range-btn" data-days="7">7D</button>
+              <button class="time-range-btn" data-days="14">2W</button>
+              <button class="time-range-btn" data-days="28">4W</button>
+              <button class="time-range-btn active" data-days="90">3M</button>
+            </div>
+          </div>
+          <div class="scenario-actions">
+            <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
+            <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
+          </div>
         </div>
-        <div class="scenario-items-list">
-          <div class="scenario-item" data-scenario="analytics_auto">
-            <div class="scenario-info">
-              <div class="scenario-title">My Posts</div>
-              <div class="scenario-subtitle">
-                <span class="scenario-meta">90 days · Auto-scroll</span>
-                <span class="scenario-data-count" data-scenario-id="analytics_auto">Tweets: <b>0</b> · Images:
-                  <b>0</b></span>
-              </div>
-              <div class="time-range-selector">
-                <button class="time-range-btn" data-days="7">7D</button>
-                <button class="time-range-btn" data-days="14">2W</button>
-                <button class="time-range-btn" data-days="28">4W</button>
-                <button class="time-range-btn active" data-days="90">3M</button>
-              </div>
-            </div>
-            <div class="scenario-actions">
-              <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
-              <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
+        <div class="scenario-item" data-scenario="bookmarks_auto">
+          <div class="scenario-info">
+            <div class="scenario-title">Bookmarks</div>
+            <div class="scenario-subtitle">
+              <span class="scenario-meta">Saved · Auto-scroll</span>
+              <span class="scenario-data-count" data-scenario-id="bookmarks_auto">Tweets: <b>0</b> · Images:
+                <b>0</b></span>
             </div>
           </div>
-          <div class="scenario-item" data-scenario="bookmarks_auto">
-            <div class="scenario-info">
-              <div class="scenario-title">Bookmarks</div>
-              <div class="scenario-subtitle">
-                <span class="scenario-meta">Saved · Auto-scroll</span>
-                <span class="scenario-data-count" data-scenario-id="bookmarks_auto">Tweets: <b>0</b> · Images:
-                  <b>0</b></span>
-              </div>
-            </div>
-            <div class="scenario-actions">
-              <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
-              <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
+          <div class="scenario-actions">
+            <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
+            <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
+          </div>
+        </div>
+        <div class="scenario-item" data-scenario="current_auto">
+          <div class="scenario-info">
+            <div class="scenario-title">Current</div>
+            <div class="scenario-subtitle">
+              <span class="scenario-meta">Search/Lists · Auto-scroll</span>
+              <span class="scenario-data-count" data-scenario-id="current_auto">Tweets: <b>0</b> · Images:
+                <b>0</b></span>
             </div>
           </div>
-          <div class="scenario-item" data-scenario="current_auto">
-            <div class="scenario-info">
-              <div class="scenario-title">Current</div>
-              <div class="scenario-subtitle">
-                <span class="scenario-meta">Search/Lists · Auto-scroll</span>
-                <span class="scenario-data-count" data-scenario-id="current_auto">Tweets: <b>0</b> · Images:
-                  <b>0</b></span>
-              </div>
-            </div>
-            <div class="scenario-actions">
-              <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
-              <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
-            </div>
+          <div class="scenario-actions">
+            <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
+            <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
           </div>
         </div>
       </div>
@@ -90,7 +84,7 @@
     </div>
 
     <!-- Data View (Table) -->
-    <div id="data-view" class="view">
+    <div id="data-view" class="view active">
       <div class="data-header">
         <div class="search-box">
           <input type="text" id="searchInput" placeholder="Search tweets..." autocomplete="off">
@@ -235,7 +229,46 @@
         </div>
       </div>
     </div>
+
+    <!-- Search View -->
+    <div id="search-view" class="view">
+      <p class="description">Execute preset search queries on X (Twitter).</p>
+      <div class="scenario-items-list" id="searchQueryList">
+        <!-- Search query items will be generated by JavaScript -->
+      </div>
+    </div>
   </div>
+
+  <!-- Search Edit Modal -->
+  <div id="searchEditModal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">Edit Search</h3>
+        <button class="modal-close" id="modalCloseBtn">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="searchLabel">Label</label>
+          <input type="text" id="searchLabel" class="form-input" placeholder="Enter search label">
+        </div>
+        <div class="form-group">
+          <label for="searchQuery">Query</label>
+          <textarea id="searchQuery" class="form-textarea" rows="6" placeholder="Enter search query (use {{NOW-24h}} for dynamic timestamps)"></textarea>
+          <div class="form-hint">
+            Variables: {{NOW}}, {{NOW-24h}}, {{NOW-7d}}, {{NOW-30d}}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="modal-btn btn-secondary" id="modalCancelBtn">Cancel</button>
+        <button type="button" class="modal-btn btn-primary" id="modalSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast notification container -->
   <div id="toastContainer" class="toast-container"></div>
   <script src="popup.js"></script>
