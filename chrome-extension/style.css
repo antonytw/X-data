@@ -40,6 +40,9 @@ body {
   padding: 12px 16px 0;
   background-color: var(--panel-bg);
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .logo {
@@ -290,6 +293,31 @@ body {
 .scenario-item:hover {
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
+}
+
+/* Search card specific styles */
+.search-card {
+  cursor: pointer;
+}
+
+.search-card:hover {
+  border-color: var(--accent);
+  background: rgba(29, 155, 240, 0.08);
+}
+
+.search-card:active {
+  transform: scale(0.98);
+}
+
+/* Hide action buttons by default on search cards */
+.search-card .search-card-actions {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Show action buttons on hover */
+.search-card:hover .search-card-actions {
+  opacity: 1;
 }
 
 .scenario-item.active {
@@ -1757,7 +1785,208 @@ tr:hover {
 }
 
 .edit-btn i, .delete-btn i {
-  font-size: 16px;
+  font-size: 14px;
+}
+
+/* Current Search Parameters Panel */
+.current-search-panel {
+  margin-top: 24px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.panel-header {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-header h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.param-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.param-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.keywords-display {
+  padding: 10px 12px;
+  font-size: 13px;
+  background: rgba(29, 155, 240, 0.08);
+  border: 1px solid rgba(29, 155, 240, 0.2);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: 'Courier New', Courier, monospace;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.param-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.param-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.param-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-main);
+}
+
+.param-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.param-checkboxes {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.param-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  transition: color 0.2s;
+}
+
+.param-checkbox:hover {
+  color: var(--text-main);
+}
+
+.param-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.param-input {
+  padding: 8px 12px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-main);
+  transition: all 0.2s;
+}
+
+.param-textarea {
+  min-height: 60px;
+  resize: vertical;
+  overflow-y: auto;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.param-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.param-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* Panel Settings Modal Styles */
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.settings-checkbox:hover {
+  background: var(--hover);
+}
+
+.settings-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.settings-checkbox span {
+  font-size: 14px;
+  color: var(--text-main);
+}
+
+.panel-footer {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.apply-search-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.apply-search-btn:hover {
+  background: #1a8cd8;
+}
+
+.apply-search-btn:active {
+  transform: scale(0.98);
 }
 
 .delete-btn {

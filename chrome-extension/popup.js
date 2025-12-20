@@ -45,7 +45,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalCancelBtn = document.getElementById('modalCancelBtn');
     const modalSaveBtn = document.getElementById('modalSaveBtn');
 
+    // Panel settings elements
+    const panelSettingsBtn = document.getElementById('panelSettingsBtn');
+    const panelSettingsModal = document.getElementById('panelSettingsModal');
+    const panelSettingsCloseBtn = document.getElementById('panelSettingsCloseBtn');
+    const panelSettingsCancelBtn = document.getElementById('panelSettingsCancelBtn');
+    const panelSettingsSaveBtn = document.getElementById('panelSettingsSaveBtn');
+
+    // Current search parameters panel elements
+    const currentSearchPanel = document.getElementById('currentSearchPanel');
+    const excludeWordsInput = document.getElementById('excludeWordsInput');
+    const applySearchBtn = document.getElementById('applySearchBtn');
+
     let currentEditIndex = -1;
+
+    // Current search parameters state
+    let currentSearchParams = {
+        label: '',
+        keywords: '',
+        timeRange: '24h',
+        minLikes: 0,
+        contentTypes: [],
+        excludeTypes: [],
+        excludeWords: []
+    };
 
     // Modal functions
     function openModal(title, label = '', query = '', index = -1) {
@@ -213,6 +236,112 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return match; // Return original if not recognized
         });
+    }
+
+    // Parse search query into parameters
+    function parseSearchQuery(query) {
+        if (!query) return { ...currentSearchParams };
+
+        const params = {
+            label: '',
+            keywords: '',
+            timeRange: '24h',
+            minLikes: 0,
+            contentTypes: [],
+            excludeTypes: [],
+            excludeWords: []
+        };
+
+        let remainingQuery = query;
+
+        // Extract time range
+        const timeMatch = remainingQuery.match(/since_time:\{\{NOW-(\d+)([hdwmy])\}\}/);
+        if (timeMatch) {
+            const [fullMatch, amount, unit] = timeMatch;
+            params.timeRange = `${amount}${unit}`;
+            remainingQuery = remainingQuery.replace(fullMatch, '').trim();
+        }
+
+        // Extract min likes
+        const likesMatch = remainingQuery.match(/min_faves:(\d+)/);
+        if (likesMatch) {
+            params.minLikes = parseInt(likesMatch[1]);
+            remainingQuery = remainingQuery.replace(likesMatch[0], '').trim();
+        }
+
+        // Extract content types
+        const contentFilters = ['media', 'videos', 'links'];
+        contentFilters.forEach(type => {
+            if (remainingQuery.includes(`filter:${type}`)) {
+                params.contentTypes.push(type);
+                remainingQuery = remainingQuery.replace(`filter:${type}`, '').trim();
+            }
+        });
+
+        // Extract exclude types
+        const excludeFilters = ['replies', 'retweets'];
+        excludeFilters.forEach(type => {
+            if (remainingQuery.includes(`-filter:${type}`)) {
+                params.excludeTypes.push(type);
+                remainingQuery = remainingQuery.replace(`-filter:${type}`, '').trim();
+            }
+        });
+
+        // Extract exclude words
+        const excludeWords = [];
+        const excludeMatches = remainingQuery.match(/-(\w+)/g);
+        if (excludeMatches) {
+            excludeMatches.forEach(match => {
+                const word = match.substring(1);
+                excludeWords.push(word);
+                remainingQuery = remainingQuery.replace(match, '').trim();
+            });
+        }
+        params.excludeWords = excludeWords;
+
+        // Remaining text is keywords
+        params.keywords = remainingQuery.replace(/\s+/g, ' ').trim();
+
+        return params;
+    }
+
+    // Build search query from parameters
+    function buildSearchQuery(params) {
+        const parts = [];
+
+        // Add keywords
+        if (params.keywords) {
+            parts.push(params.keywords);
+        }
+
+        // Add time range
+        if (params.timeRange && params.timeRange !== '24h') {
+            parts.push(`since_time:{{NOW-${params.timeRange}}}`);
+        } else if (params.timeRange === '24h') {
+            parts.push('since_time:{{NOW-24h}}');
+        }
+
+        // Add min likes
+        if (params.minLikes > 0) {
+            parts.push(`min_faves:${params.minLikes}`);
+        }
+
+        // Add content types
+        params.contentTypes.forEach(type => {
+            parts.push(`filter:${type}`);
+        });
+
+        // Add exclude types
+        params.excludeTypes.forEach(type => {
+            parts.push(`-filter:${type}`);
+        });
+
+        // Add exclude words
+        params.excludeWords.forEach(word => {
+            parts.push(`-${word}`);
+        });
+
+        return parts.join(' ');
     }
 
     const isEmbedded = window.parent !== window;
@@ -606,30 +735,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         customSearches.forEach((search, index) => {
             const item = document.createElement('div');
-            item.className = 'scenario-item';
+            item.className = 'scenario-item search-card';
             item.dataset.searchId = search.id;
 
             item.innerHTML = `
                 <div class="scenario-info">
                     <div class="scenario-title">${escapeHtml(search.label)}</div>
-                    <div class="scenario-subtitle">
-                        <span class="scenario-meta search-query-preview">${escapeHtml(search.query)}</span>
-                    </div>
                 </div>
-                <div class="scenario-actions">
+                <div class="scenario-actions search-card-actions">
                     <button type="button" class="scenario-action-btn edit-btn" data-action="edit" title="Edit">
                         <i class="ri-edit-line"></i>
                     </button>
                     <button type="button" class="scenario-action-btn delete-btn" data-action="delete" title="Delete">
                         <i class="ri-delete-bin-line"></i>
                     </button>
-                    <button type="button" class="scenario-action-btn search-execute-btn" data-action="execute">Execute</button>
                 </div>
             `;
 
             const editBtn = item.querySelector('.edit-btn');
             const deleteBtn = item.querySelector('.delete-btn');
-            const executeBtn = item.querySelector('.search-execute-btn');
+
+            // Make entire card clickable
+            item.addEventListener('click', (e) => {
+                // Don't trigger if clicking on action buttons
+                if (e.target.closest('.scenario-actions')) {
+                    return;
+                }
+                // Execute search immediately and load params to panel
+                executeSearch(search);
+                loadSearchToPanel(search);
+            });
 
             editBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -639,11 +774,6 @@ document.addEventListener('DOMContentLoaded', () => {
             deleteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 deleteSearch(index);
-            });
-
-            executeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                executeSearch(search);
             });
 
             searchQueryList.appendChild(item);
@@ -694,6 +824,148 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
+    }
+
+    // Load search parameters to panel
+    function loadSearchToPanel(search) {
+        // Parse query into parameters
+        currentSearchParams = parseSearchQuery(search.query);
+        currentSearchParams.label = search.label;
+
+        // Update UI (panel is always visible)
+        updateParameterPanel();
+    }
+
+    // Update parameter panel UI
+    function updateParameterPanel() {
+        // Update keywords input
+        const keywordsInput = document.getElementById('searchKeywordsInput');
+        if (keywordsInput) {
+            keywordsInput.value = currentSearchParams.keywords || '';
+        }
+
+        // Update time range buttons
+        document.querySelectorAll('[data-param="timeRange"]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.value === currentSearchParams.timeRange);
+        });
+
+        // Update min likes buttons
+        document.querySelectorAll('[data-param="minLikes"]').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.value) === currentSearchParams.minLikes);
+        });
+
+        // Update content type checkboxes
+        document.querySelectorAll('[data-param="contentType"]').forEach(checkbox => {
+            checkbox.checked = currentSearchParams.contentTypes.includes(checkbox.value);
+        });
+
+        // Update exclude type checkboxes
+        document.querySelectorAll('[data-param="excludeType"]').forEach(checkbox => {
+            checkbox.checked = currentSearchParams.excludeTypes.includes(checkbox.value);
+        });
+
+        // Update exclude words input
+        if (excludeWordsInput) {
+            excludeWordsInput.value = currentSearchParams.excludeWords.join(', ');
+        }
+    }
+
+    // Initialize parameter panel event listeners
+    function initParameterPanel() {
+        let keywordsDebounce = null;
+        let excludeWordsDebounce = null;
+
+        // Search keywords input - debounced effect
+        const searchKeywordsInput = document.getElementById('searchKeywordsInput');
+        if (searchKeywordsInput) {
+            searchKeywordsInput.addEventListener('input', () => {
+                currentSearchParams.keywords = searchKeywordsInput.value.trim();
+
+                // Clear previous timeout
+                if (keywordsDebounce) {
+                    clearTimeout(keywordsDebounce);
+                }
+
+                // Set new timeout - wait 500ms after user stops typing
+                keywordsDebounce = setTimeout(() => {
+                    applyCurrentSearch();
+                }, 500);
+            });
+        }
+
+        // Time range buttons - immediate effect
+        document.querySelectorAll('[data-param="timeRange"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentSearchParams.timeRange = btn.dataset.value;
+                updateParameterPanel();
+                applyCurrentSearch();
+            });
+        });
+
+        // Min likes buttons - immediate effect
+        document.querySelectorAll('[data-param="minLikes"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentSearchParams.minLikes = parseInt(btn.dataset.value);
+                updateParameterPanel();
+                applyCurrentSearch();
+            });
+        });
+
+        // Content type checkboxes - immediate effect
+        document.querySelectorAll('[data-param="contentType"]').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    if (!currentSearchParams.contentTypes.includes(checkbox.value)) {
+                        currentSearchParams.contentTypes.push(checkbox.value);
+                    }
+                } else {
+                    currentSearchParams.contentTypes = currentSearchParams.contentTypes.filter(t => t !== checkbox.value);
+                }
+                applyCurrentSearch();
+            });
+        });
+
+        // Exclude type checkboxes - immediate effect
+        document.querySelectorAll('[data-param="excludeType"]').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    if (!currentSearchParams.excludeTypes.includes(checkbox.value)) {
+                        currentSearchParams.excludeTypes.push(checkbox.value);
+                    }
+                } else {
+                    currentSearchParams.excludeTypes = currentSearchParams.excludeTypes.filter(t => t !== checkbox.value);
+                }
+                applyCurrentSearch();
+            });
+        });
+
+        // Exclude words input - debounced effect
+        if (excludeWordsInput) {
+            excludeWordsInput.addEventListener('input', () => {
+                const words = excludeWordsInput.value.split(',').map(w => w.trim()).filter(w => w);
+                currentSearchParams.excludeWords = words;
+
+                // Clear previous timeout
+                if (excludeWordsDebounce) {
+                    clearTimeout(excludeWordsDebounce);
+                }
+
+                // Set new timeout - wait 500ms after user stops typing
+                excludeWordsDebounce = setTimeout(() => {
+                    applyCurrentSearch();
+                }, 500);
+            });
+        }
+    }
+
+    // Apply current search parameters
+    function applyCurrentSearch() {
+        const query = buildSearchQuery(currentSearchParams);
+        const search = {
+            label: currentSearchParams.label || 'Custom Search',
+            query: query
+        };
+        executeSearch(search);
     }
 
     function setScenarioData(id, data, { persist = true, refreshView = true } = {}) {
@@ -1100,6 +1372,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDataScenarioTabs();
     loadCustomSearches();
     renderSearchQueryList();
+    initParameterPanel();
     bootstrapScenarioDataFromStorage();
 
     // Initialize time range selector
