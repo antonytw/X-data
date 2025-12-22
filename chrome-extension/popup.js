@@ -57,13 +57,83 @@ document.addEventListener('DOMContentLoaded', () => {
     const excludeWordsInput = document.getElementById('excludeWordsInput');
     const applySearchBtn = document.getElementById('applySearchBtn');
 
+    // Confirm modal elements
+    const confirmModal = document.getElementById('confirmModal');
+    const confirmTitle = document.getElementById('confirmTitle');
+    const confirmMessage = document.getElementById('confirmMessage');
+    const confirmCloseBtn = document.getElementById('confirmCloseBtn');
+    const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+    const confirmOkBtn = document.getElementById('confirmOkBtn');
+
     let currentEditIndex = -1;
+    let confirmCallback = null;
+
+    // Custom confirm dialog functions
+    function showConfirm(message, title = 'Confirm', onConfirm = null) {
+        if (!confirmModal) return Promise.resolve(false);
+
+        confirmTitle.textContent = title;
+        confirmMessage.textContent = message;
+        confirmModal.classList.remove('hidden');
+
+        return new Promise((resolve) => {
+            confirmCallback = (confirmed) => {
+                resolve(confirmed);
+                if (confirmed && onConfirm) {
+                    onConfirm();
+                }
+            };
+        });
+    }
+
+    function closeConfirm(confirmed = false) {
+        if (!confirmModal) return;
+        confirmModal.classList.add('hidden');
+        if (confirmCallback) {
+            confirmCallback(confirmed);
+            confirmCallback = null;
+        }
+    }
+
+    // Confirm modal event listeners
+    if (confirmCloseBtn) {
+        confirmCloseBtn.addEventListener('click', () => closeConfirm(false));
+    }
+
+    if (confirmCancelBtn) {
+        confirmCancelBtn.addEventListener('click', () => closeConfirm(false));
+    }
+
+    if (confirmOkBtn) {
+        confirmOkBtn.addEventListener('click', () => closeConfirm(true));
+    }
+
+    // Close confirm modal on overlay click
+    if (confirmModal) {
+        confirmModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeConfirm(false);
+            }
+        });
+    }
+
+    // Close confirm modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && confirmModal && !confirmModal.classList.contains('hidden')) {
+            closeConfirm(false);
+        }
+    });
 
     // Current search parameters state
     let currentSearchParams = {
         label: '',
         keywords: '',
-        timeRange: '24h',
+        language: '',
+        fromUser: '',
+        toUser: '',
+        mentionedUser: '',
+        list: '',
+        timeRange: '',
         minLikes: 0,
         contentTypes: [],
         excludeTypes: [],
@@ -164,12 +234,12 @@ document.addEventListener('DOMContentLoaded', () => {
         {
             id: 'nano_banana_pro',
             label: 'Nano Banana Pro',
-            query: '(#NanoBananaPro OR #NanoBanana OR "Nano Banana") and -female -woman -hair since_time:{{NOW-24h}} min_faves:100 filter:media -filter:replies'
+            query: '(#NanoBananaPro OR #NanoBanana OR "Nano Banana") and -female -woman -hair min_faves:100 filter:media -filter:replies'
         },
         {
             id: 'example_search_2',
             label: 'Example Search 2',
-            query: 'your search query here since:{{NOW-7d}}'
+            query: 'your search query here'
         }
     ];
 
@@ -245,7 +315,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = {
             label: '',
             keywords: '',
-            timeRange: '24h',
+            language: '',
+            fromUser: '',
+            toUser: '',
+            mentionedUser: '',
+            list: '',
+            timeRange: '',
             minLikes: 0,
             contentTypes: [],
             excludeTypes: [],
@@ -254,12 +329,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let remainingQuery = query;
 
+        // Extract language
+        const langMatch = remainingQuery.match(/lang:(\w+)/);
+        if (langMatch) {
+            params.language = langMatch[1];
+            remainingQuery = remainingQuery.replace(langMatch[0], '').trim();
+        }
+
+        // Extract list
+        const listMatch = remainingQuery.match(/list:(\d+)/);
+        if (listMatch) {
+            params.list = listMatch[1];
+            remainingQuery = remainingQuery.replace(listMatch[0], '').trim();
+        }
+
+        // Extract from user
+        const fromMatch = remainingQuery.match(/from:([\w_]+)/);
+        if (fromMatch) {
+            params.fromUser = fromMatch[1];
+            remainingQuery = remainingQuery.replace(fromMatch[0], '').trim();
+        }
+
+        // Extract to user
+        const toMatch = remainingQuery.match(/to:([\w_]+)/);
+        if (toMatch) {
+            params.toUser = toMatch[1];
+            remainingQuery = remainingQuery.replace(toMatch[0], '').trim();
+        }
+
+        // Extract mentioned user
+        const mentionMatch = remainingQuery.match(/@([\w_]+)/);
+        if (mentionMatch) {
+            params.mentionedUser = mentionMatch[1];
+            remainingQuery = remainingQuery.replace(mentionMatch[0], '').trim();
+        }
+
         // Extract time range
         const timeMatch = remainingQuery.match(/since_time:\{\{NOW-(\d+)([hdwmy])\}\}/);
         if (timeMatch) {
             const [fullMatch, amount, unit] = timeMatch;
             params.timeRange = `${amount}${unit}`;
             remainingQuery = remainingQuery.replace(fullMatch, '').trim();
+        } else {
+            // Also check for specific timestamp (legacy or parsed query) and remove it
+            // to prevent it from becoming part of keywords
+            const timestampMatch = remainingQuery.match(/since_time:(\d+)/);
+            if (timestampMatch) {
+                remainingQuery = remainingQuery.replace(timestampMatch[0], '').trim();
+            }
         }
 
         // Extract min likes
@@ -270,7 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Extract content types
-        const contentFilters = ['media', 'videos', 'links'];
+        const contentFilters = ['media', 'videos', 'links', 'images'];
         contentFilters.forEach(type => {
             if (remainingQuery.includes(`filter:${type}`)) {
                 params.contentTypes.push(type);
@@ -312,6 +429,31 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add keywords
         if (params.keywords) {
             parts.push(params.keywords);
+        }
+
+        // Add language
+        if (params.language) {
+            parts.push(`lang:${params.language}`);
+        }
+
+        // Add list
+        if (params.list) {
+            parts.push(`list:${params.list}`);
+        }
+
+        // Add from user
+        if (params.fromUser) {
+            parts.push(`from:${params.fromUser.replace(/^@/, '')}`);
+        }
+
+        // Add to user
+        if (params.toUser) {
+            parts.push(`to:${params.toUser.replace(/^@/, '')}`);
+        }
+
+        // Add mentioned user
+        if (params.mentionedUser) {
+            parts.push(`@${params.mentionedUser.replace(/^@/, '')}`);
         }
 
         // Add time range
@@ -358,8 +500,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const scrapeBtn = document.getElementById('scrapeBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
     const autoScrollBtn = document.getElementById('autoScrollBtn');
     const copyBtn = document.getElementById('copyBtn');
+    const pdfBtn = document.getElementById('pdfBtn');
     const downloadBtn = document.getElementById('downloadBtn');
     const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
     const iconMarkup = {
@@ -584,11 +728,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (confirm(`Are you sure you want to clear all cached data for "${scenario.label}"?`)) {
-            setScenarioData(scenarioId, []);
-            showToast(`Cleared ${scenario.label} cache`, 'success', 2000);
-            sendMessageToActiveTab({ action: "update_cache", scenarioId, data: [] });
-        }
+        showConfirm(
+            `Are you sure you want to clear all cached data for "${scenario.label}"?`,
+            'Clear Cache'
+        ).then(confirmed => {
+            if (confirmed) {
+                setScenarioData(scenarioId, []);
+                showToast(`Cleared ${scenario.label} cache`, 'success', 2000);
+                sendMessageToActiveTab({ action: "update_cache", scenarioId, data: [] });
+            }
+        });
     }
 
     function updateAutoScrollControls() {
@@ -707,13 +856,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const scenario = getScenarioById(scenarioId);
-        if (!confirm(`Are you sure you want to clear the cache for "${scenario.label}"?`)) return;
-        console.log('Confirmed, clearing scenario:', scenario.id);
-        setScenarioData(scenario.id, []);
-        updateScenarioStorageList();
-        updateStorageUI();
-        showToast(`Cleared ${scenario.label} cache`, 'success', 2000);
-        sendMessageToActiveTab({ action: "update_cache", scenarioId: scenario.id, data: [] });
+        showConfirm(
+            `Are you sure you want to clear the cache for "${scenario.label}"?`,
+            'Clear Cache'
+        ).then(confirmed => {
+            if (confirmed) {
+                console.log('Confirmed, clearing scenario:', scenario.id);
+                setScenarioData(scenario.id, []);
+                updateScenarioStorageList();
+                updateStorageUI();
+                showToast(`Cleared ${scenario.label} cache`, 'success', 2000);
+                sendMessageToActiveTab({ action: "update_cache", scenarioId: scenario.id, data: [] });
+            }
+        });
     }
 
     function renderDataScenarioTabs() {
@@ -808,12 +963,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const search = customSearches[index];
         if (!search) return;
 
-        if (!confirm(`Delete search "${search.label}"?`)) return;
-
-        customSearches.splice(index, 1);
-        saveCustomSearches();
-        renderSearchQueryList();
-        showToast('Search deleted', 'success', 2000);
+        showConfirm(
+            `Delete search "${search.label}"?`,
+            'Delete Search'
+        ).then(confirmed => {
+            if (confirmed) {
+                customSearches.splice(index, 1);
+                saveCustomSearches();
+                renderSearchQueryList();
+                showToast('Search deleted', 'success', 2000);
+            }
+        });
     }
 
     function executeSearch(search) {
@@ -858,6 +1018,24 @@ document.addEventListener('DOMContentLoaded', () => {
             keywordsInput.value = currentSearchParams.keywords || '';
         }
 
+        // Update language
+        const languageInput = document.getElementById('languageInput');
+        if (languageInput) languageInput.value = currentSearchParams.language || '';
+
+        // Update user inputs
+        const fromUserInput = document.getElementById('fromUserInput');
+        if (fromUserInput) fromUserInput.value = currentSearchParams.fromUser || '';
+
+        const toUserInput = document.getElementById('toUserInput');
+        if (toUserInput) toUserInput.value = currentSearchParams.toUser || '';
+
+        const mentionedUserInput = document.getElementById('mentionedUserInput');
+        if (mentionedUserInput) mentionedUserInput.value = currentSearchParams.mentionedUser || '';
+
+        // Update list input
+        const listInput = document.getElementById('listInput');
+        if (listInput) listInput.value = currentSearchParams.list || '';
+
         // Update time range buttons
         document.querySelectorAll('[data-param="timeRange"]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.value === currentSearchParams.timeRange);
@@ -888,6 +1066,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function initParameterPanel() {
         let keywordsDebounce = null;
         let excludeWordsDebounce = null;
+        let userInputsDebounce = null;
+        let listInputDebounce = null;
 
         // Search keywords input - debounced effect
         const searchKeywordsInput = document.getElementById('searchKeywordsInput');
@@ -902,6 +1082,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Set new timeout - wait 500ms after user stops typing
                 keywordsDebounce = setTimeout(() => {
+                    applyCurrentSearch();
+                }, 500);
+            });
+        }
+
+        // Language input - immediate effect
+        const languageInput = document.getElementById('languageInput');
+        if (languageInput) {
+            languageInput.addEventListener('change', () => {
+                currentSearchParams.language = languageInput.value;
+                applyCurrentSearch();
+            });
+        }
+
+        // User inputs - debounced effect
+        const fromUserInput = document.getElementById('fromUserInput');
+        const toUserInput = document.getElementById('toUserInput');
+        const mentionedUserInput = document.getElementById('mentionedUserInput');
+
+        const handleUserInputChange = () => {
+            if (fromUserInput) currentSearchParams.fromUser = fromUserInput.value.trim();
+            if (toUserInput) currentSearchParams.toUser = toUserInput.value.trim();
+            if (mentionedUserInput) currentSearchParams.mentionedUser = mentionedUserInput.value.trim();
+
+            if (userInputsDebounce) clearTimeout(userInputsDebounce);
+            userInputsDebounce = setTimeout(() => {
+                applyCurrentSearch();
+            }, 500);
+        };
+
+        if (fromUserInput) fromUserInput.addEventListener('input', handleUserInputChange);
+        if (toUserInput) toUserInput.addEventListener('input', handleUserInputChange);
+        if (mentionedUserInput) mentionedUserInput.addEventListener('input', handleUserInputChange);
+
+        // List input - debounced effect
+        const listInput = document.getElementById('listInput');
+        if (listInput) {
+            listInput.addEventListener('input', () => {
+                currentSearchParams.list = listInput.value.trim();
+
+                if (listInputDebounce) clearTimeout(listInputDebounce);
+                listInputDebounce = setTimeout(() => {
                     applyCurrentSearch();
                 }, 500);
             });
@@ -980,6 +1202,144 @@ document.addEventListener('DOMContentLoaded', () => {
             query: query
         };
         executeSearch(search);
+    }
+
+    // --- Panel Settings Logic ---
+    const PANEL_SETTINGS_KEY = 'x_data_panel_settings';
+    
+    // Default settings - all visible by default
+    const DEFAULT_PANEL_SETTINGS = {
+        searchKeywords: true,
+        language: true,
+        user: true,
+        list: true,
+        timeRange: true,
+        minLikes: true,
+        contentType: true,
+        exclude: true,
+        excludeWords: true
+    };
+
+    let panelSettings = { ...DEFAULT_PANEL_SETTINGS };
+
+    function loadPanelSettings() {
+        try {
+            const stored = localStorage.getItem(PANEL_SETTINGS_KEY);
+            if (stored) {
+                panelSettings = { ...DEFAULT_PANEL_SETTINGS, ...JSON.parse(stored) };
+            }
+        } catch (err) {
+            console.error('Failed to load panel settings:', err);
+        }
+        applyPanelSettings();
+    }
+
+    function savePanelSettings() {
+        try {
+            localStorage.setItem(PANEL_SETTINGS_KEY, JSON.stringify(panelSettings));
+        } catch (err) {
+            console.error('Failed to save panel settings:', err);
+        }
+        applyPanelSettings();
+    }
+
+    function applyPanelSettings() {
+        // Update visibility of param groups in the panel
+        Object.entries(panelSettings).forEach(([field, isVisible]) => {
+            const group = document.querySelector(`.param-group[data-field="${field}"]`);
+            if (group) {
+                group.style.display = isVisible ? '' : 'none';
+            }
+        });
+
+        // Update checkboxes in the settings modal
+        const modal = document.getElementById('panelSettingsModal');
+        if (modal) {
+            const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                const field = cb.getAttribute('data-field');
+                if (field && panelSettings.hasOwnProperty(field)) {
+                    cb.checked = panelSettings[field];
+                }
+            });
+        }
+    }
+
+    function openPanelSettings() {
+        const modal = document.getElementById('panelSettingsModal');
+        if (!modal) return;
+        
+        // Sync checkboxes with current settings before opening
+        const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            const field = cb.getAttribute('data-field');
+            if (field) {
+                cb.checked = panelSettings[field];
+            }
+        });
+        modal.classList.remove('hidden');
+    }
+
+    function closePanelSettings() {
+        const modal = document.getElementById('panelSettingsModal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    function savePanelSettingsFromModal() {
+        const modal = document.getElementById('panelSettingsModal');
+        if (!modal) return;
+
+        const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            const field = cb.getAttribute('data-field');
+            if (field) {
+                panelSettings[field] = cb.checked;
+            }
+        });
+        savePanelSettings();
+        closePanelSettings();
+        showToast('Settings saved', 'success', 2000);
+    }
+
+    function initPanelSettings() {
+        const btn = document.getElementById('panelSettingsBtn');
+        const closeBtn = document.getElementById('panelSettingsCloseBtn');
+        const cancelBtn = document.getElementById('panelSettingsCancelBtn');
+        const saveBtn = document.getElementById('panelSettingsSaveBtn');
+        const modal = document.getElementById('panelSettingsModal');
+
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openPanelSettings();
+            });
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closePanelSettings);
+        }
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', closePanelSettings);
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', savePanelSettingsFromModal);
+        }
+        
+        // Close on overlay click
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal-overlay')) {
+                    closePanelSettings();
+                }
+            });
+        }
+
+        loadPanelSettings();
     }
 
     function setScenarioData(id, data, { persist = true, refreshView = true } = {}) {
@@ -1339,9 +1699,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (clearHistoryBtn) {
         clearHistoryBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (confirm('Clear all search history?')) {
-                clearSearchHistory();
-            }
+            showConfirm(
+                'Clear all search history?',
+                'Clear History'
+            ).then(confirmed => {
+                if (confirmed) {
+                    clearSearchHistory();
+                }
+            });
         });
     }
 
@@ -1354,6 +1719,250 @@ document.addEventListener('DOMContentLoaded', () => {
             hideSearchHistory();
         }
     });
+
+    // --- Parameter Input History System ---
+    const PARAM_HISTORY_KEYS = {
+        fromUser: 'x_data_from_user_history',
+        toUser: 'x_data_to_user_history',
+        mentionedUser: 'x_data_mentioned_user_history',
+        list: 'x_data_list_history',
+        excludeWords: 'x_data_exclude_words_history'
+    };
+    const MAX_PARAM_HISTORY_ITEMS = 10;
+    const paramHistories = {
+        fromUser: [],
+        toUser: [],
+        mentionedUser: [],
+        list: [],
+        excludeWords: []
+    };
+
+    // Load parameter histories from localStorage
+    function loadParamHistories() {
+        Object.keys(PARAM_HISTORY_KEYS).forEach(key => {
+            try {
+                const stored = localStorage.getItem(PARAM_HISTORY_KEYS[key]);
+                paramHistories[key] = stored ? JSON.parse(stored) : [];
+            } catch (err) {
+                console.error(`Failed to load ${key} history:`, err);
+                paramHistories[key] = [];
+            }
+        });
+    }
+
+    // Save parameter history to localStorage
+    function saveParamHistory(type) {
+        try {
+            localStorage.setItem(PARAM_HISTORY_KEYS[type], JSON.stringify(paramHistories[type]));
+        } catch (err) {
+            console.error(`Failed to save ${type} history:`, err);
+        }
+    }
+
+    // Add item to parameter history
+    function addToParamHistory(type, value) {
+        if (!value || value.trim().length === 0) return;
+        if (!paramHistories[type]) return;
+
+        const trimmedValue = value.trim();
+
+        // Remove if already exists (move to top)
+        paramHistories[type] = paramHistories[type].filter(item => item !== trimmedValue);
+
+        // Add to beginning
+        paramHistories[type].unshift(trimmedValue);
+
+        // Limit to max items
+        if (paramHistories[type].length > MAX_PARAM_HISTORY_ITEMS) {
+            paramHistories[type] = paramHistories[type].slice(0, MAX_PARAM_HISTORY_ITEMS);
+        }
+
+        saveParamHistory(type);
+        renderParamHistory(type);
+    }
+
+    // Remove item from parameter history
+    function removeFromParamHistory(type, value) {
+        if (!paramHistories[type]) return;
+        paramHistories[type] = paramHistories[type].filter(item => item !== value);
+        saveParamHistory(type);
+        renderParamHistory(type);
+    }
+
+    // Clear parameter history
+    function clearParamHistory(type) {
+        if (!paramHistories[type]) return;
+        paramHistories[type] = [];
+        saveParamHistory(type);
+        renderParamHistory(type);
+    }
+
+    // Render parameter history dropdown
+    function renderParamHistory(type) {
+        const dropdownId = type + 'Dropdown';
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+
+        const listContainer = dropdown.querySelector(`[data-history-list="${type}"]`);
+        const emptyState = dropdown.querySelector('.search-history-empty');
+        if (!listContainer || !emptyState) return;
+
+        listContainer.innerHTML = '';
+
+        if (paramHistories[type].length === 0) {
+            listContainer.style.display = 'none';
+            emptyState.style.display = 'flex';
+        } else {
+            listContainer.style.display = 'block';
+            emptyState.style.display = 'none';
+
+            paramHistories[type].forEach(value => {
+                const item = document.createElement('div');
+                item.className = 'search-history-item';
+                let iconClass = 'ri-user-line';
+                if (type === 'excludeWords') {
+                    iconClass = 'ri-subtract-line';
+                } else if (type === 'list') {
+                    iconClass = 'ri-list-check';
+                }
+                item.innerHTML = `
+                    <div class="search-history-icon">
+                        <i class="${iconClass}"></i>
+                    </div>
+                    <div class="search-history-text">${escapeHtml(value)}</div>
+                    <button class="search-history-remove" title="Remove" aria-label="Remove from history">
+                        <i class="ri-close-line"></i>
+                    </button>
+                `;
+
+                // Click history item to fill input
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.search-history-remove')) {
+                        return; // Handle by remove button
+                    }
+                    const inputId = type + 'Input';
+                    const input = document.getElementById(inputId);
+                    if (input) {
+                        input.value = value;
+                        input.dispatchEvent(new Event('input'));
+                    }
+                    hideParamHistory(type);
+                });
+
+                // Remove button
+                const removeBtn = item.querySelector('.search-history-remove');
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeFromParamHistory(type, value);
+                });
+
+                listContainer.appendChild(item);
+            });
+        }
+    }
+
+    // Show parameter history dropdown
+    function showParamHistory(type) {
+        const dropdownId = type + 'Dropdown';
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+        dropdown.classList.remove('hidden');
+    }
+
+    // Hide parameter history dropdown
+    function hideParamHistory(type) {
+        const dropdownId = type + 'Dropdown';
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+        dropdown.classList.add('hidden');
+    }
+
+    // Initialize parameter history for all inputs
+    function initParamHistory() {
+        loadParamHistories();
+
+        // Setup for each parameter input
+        Object.keys(PARAM_HISTORY_KEYS).forEach(type => {
+            const inputId = type + 'Input';
+            const input = document.getElementById(inputId);
+            if (!input) return;
+
+            // Render initial history
+            renderParamHistory(type);
+
+            // Show history on focus
+            input.addEventListener('focus', () => {
+                showParamHistory(type);
+            });
+
+            // Handle Enter key to save history
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const value = input.value.trim();
+                    if (value.length > 0) {
+                        addToParamHistory(type, value);
+                        hideParamHistory(type);
+                    }
+                } else if (e.key === 'Escape') {
+                    hideParamHistory(type);
+                }
+            });
+
+            // Save to history when input loses focus (blur) if value has changed
+            let lastValue = input.value;
+            input.addEventListener('focus', () => {
+                lastValue = input.value;
+            });
+            input.addEventListener('blur', () => {
+                const currentValue = input.value.trim();
+                if (currentValue.length > 0 && currentValue !== lastValue.trim()) {
+                    // Add slight delay to allow click on history items to work
+                    setTimeout(() => {
+                        addToParamHistory(type, currentValue);
+                    }, 200);
+                }
+            });
+        });
+
+        // Clear history button handlers
+        const clearButtons = document.querySelectorAll('.clear-history-btn[data-history]');
+        clearButtons.forEach(btn => {
+            const type = btn.getAttribute('data-history');
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showConfirm(
+                    `Clear all ${type} history?`,
+                    'Clear History'
+                ).then(confirmed => {
+                    if (confirmed) {
+                        clearParamHistory(type);
+                    }
+                });
+            });
+        });
+
+        // Click outside to close all parameter dropdowns
+        document.addEventListener('click', (e) => {
+            const inputWithHistory = e.target.closest('.input-with-history');
+            if (!inputWithHistory) {
+                // Clicked outside all input-with-history containers, close all
+                Object.keys(PARAM_HISTORY_KEYS).forEach(type => {
+                    hideParamHistory(type);
+                });
+            } else {
+                // Clicked inside one container, close others
+                Object.keys(PARAM_HISTORY_KEYS).forEach(type => {
+                    const dropdown = document.getElementById(type + 'Dropdown');
+                    if (dropdown && !inputWithHistory.contains(dropdown)) {
+                        hideParamHistory(type);
+                    }
+                });
+            }
+        });
+    }
+
+    // Initialize parameter history system
+    initParamHistory();
 
     // --- Sorting Logic ---
     const sortableHeaders = document.querySelectorAll('.sortable');
@@ -1387,6 +1996,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCustomSearches();
     renderSearchQueryList();
     initParameterPanel();
+    initPanelSettings();
     bootstrapScenarioDataFromStorage();
 
     // Initialize time range selector
@@ -2278,12 +2888,33 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update the inline data count for the specific scenario
             const scenarioId = request.scenarioId;
             if (scenarioId) {
-                // Update the scenario's inline data count
-                refreshConsoleStatsForScenario(scenarioId);
+                // AIDEV-NOTE: Reload data from Chrome storage to sync with content.js changes
+                // This ensures popup UI stays in sync when content.js saves tweets via Quick Add button
+                chrome.storage.local.get([DATA_CACHE_STORAGE_KEY], (result) => {
+                    const storedByScenario = result[DATA_CACHE_STORAGE_KEY];
+                    if (storedByScenario && storedByScenario[scenarioId]) {
+                        // Update in-memory cache with fresh data from storage
+                        scenarioDataStore[scenarioId] = storedByScenario[scenarioId];
 
-                // Also update the status message to show progress
-                const scenario = getScenarioById(scenarioId);
-                setStatus(`Scraping ${scenario.label}... ${request.count} tweets found`, 'success');
+                        // Refresh console stats
+                        refreshConsoleStatsForScenario(scenarioId);
+
+                        // If this is the currently active scenario, refresh the table UI
+                        if (scenarioId === activeDataScenarioId) {
+                            updateUI(scenarioDataStore[scenarioId], scenarioId);
+                        }
+
+                        // Update status message
+                        const scenario = getScenarioById(scenarioId);
+                        const count = scenarioDataStore[scenarioId].length;
+                        setStatus(`${scenario.label} updated: ${count} tweets`, 'success');
+                    } else {
+                        // Fallback: just refresh stats
+                        refreshConsoleStatsForScenario(scenarioId);
+                        const scenario = getScenarioById(scenarioId);
+                        setStatus(`Scraping ${scenario.label}... ${request.count} tweets found`, 'success');
+                    }
+                });
             }
         } else if (request.action === "scroll_finished") {
             autoScrollRunning = false;
@@ -2304,6 +2935,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Start scraping
             handleScenarioAutoScroll(activeDataScenarioId);
         }
+    });
+
+    deleteBtn.addEventListener('click', () => {
+        handleScenarioClear(activeDataScenarioId);
     });
 
     copyBtn.addEventListener('click', () => {
@@ -2363,6 +2998,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    pdfBtn.addEventListener('click', () => {
+        // Get tweet links from the currently active data scenario
+        const activeData = getScenarioData(activeDataScenarioId);
+
+        if (!activeData || activeData.length === 0) {
+            showToast('没有可生成PDF的推文链接', 'info', 2000);
+            return;
+        }
+
+        const tweetLinks = activeData.map(tweet => {
+            const url = resolveTweetUrl(tweet);
+            return url || `https://x.com/i/web/status/${tweet.id}`;
+        }).filter(url => url); // Filter out any null URLs
+
+        if (tweetLinks.length === 0) {
+            showToast('没有有效的推文链接', 'info', 2000);
+            return;
+        }
+
+        // Join links with | separator
+        const urlsParam = tweetLinks.join('|');
+
+        // Construct x2pdf URL
+        const pdfUrl = `https://x2pdf.vercel.app/?urls=${encodeURIComponent(urlsParam)}`;
+
+        // Open in new tab
+        window.open(pdfUrl, '_blank', 'noopener');
+
+        showToast(`正在生成 ${tweetLinks.length} 条推文的PDF`, 'success', 2000);
+    });
+
     downloadBtn.addEventListener('click', () => {
         const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -2388,21 +3054,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (clearStorageBtn) {
         clearStorageBtn.addEventListener('click', () => {
-            if (confirm('确定要清空所有缓存数据吗？此操作不可恢复。')) {
-                chrome.storage.local.clear(() => {
-                    Object.keys(scenarioDataStore).forEach(key => delete scenarioDataStore[key]);
-                    updateDataScenarioTabsState();
-                    updateScenarioStorageList();
-                    applyCurrentDataFromScenario();
-                    refreshConsoleStatsForScenario();
-                    updateStorageUI();
-                    showToast('缓存已清空', 'success', 2000);
-                    setStatus('Cache cleared.', 'success');
-                    SCRAPE_SCENARIOS.forEach(scenario => {
-                        sendMessageToActiveTab({ action: "update_cache", scenarioId: scenario.id, data: [] });
+            showConfirm(
+                '确定要清空所有缓存数据吗？此操作不可恢复。',
+                'Clear All Cache'
+            ).then(confirmed => {
+                if (confirmed) {
+                    chrome.storage.local.clear(() => {
+                        Object.keys(scenarioDataStore).forEach(key => delete scenarioDataStore[key]);
+                        updateDataScenarioTabsState();
+                        updateScenarioStorageList();
+                        applyCurrentDataFromScenario();
+                        refreshConsoleStatsForScenario();
+                        updateStorageUI();
+                        showToast('缓存已清空', 'success', 2000);
+                        setStatus('Cache cleared.', 'success');
+                        SCRAPE_SCENARIOS.forEach(scenario => {
+                            sendMessageToActiveTab({ action: "update_cache", scenarioId: scenario.id, data: [] });
+                        });
                     });
-                });
-            }
+                }
+            });
         });
     }
 

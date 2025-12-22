@@ -115,12 +115,19 @@
             aria-label="Start scraping">
             <i class="ri-download-cloud-line" aria-hidden="true"></i>
           </button>
+          <button id="deleteBtn" class="icon-btn" title="Delete data for current scenario"
+            aria-label="Delete data">
+            <i class="ri-delete-bin-line" aria-hidden="true"></i>
+          </button>
           <button id="refreshDetailsBtn" class="icon-btn" title="Fetch fresh details via VxTwitter"
             aria-label="Fetch fresh details via VxTwitter">
             <i class="ri-refresh-line" aria-hidden="true"></i>
           </button>
           <button id="copyBtn" class="icon-btn" title="Copy Tweet Links" aria-label="Copy Tweet Links">
             <i class="ri-file-copy-line" aria-hidden="true"></i>
+          </button>
+          <button id="pdfBtn" class="icon-btn" title="Generate PDF" aria-label="Generate PDF">
+            <i class="ri-file-pdf-line" aria-hidden="true"></i>
           </button>
           <button id="downloadBtn" class="icon-btn" title="Download JSON" aria-label="Download JSON">
             <i class="ri-download-2-line" aria-hidden="true"></i>
@@ -254,9 +261,104 @@
             <label>Search Keywords</label>
             <textarea id="searchKeywordsInput" class="param-input param-textarea" placeholder="Enter keywords..."></textarea>
           </div>
+          <div class="param-group" data-field="language">
+            <label>Language</label>
+            <select id="languageInput" class="param-input">
+              <option value="">Any Language</option>
+              <option value="zh">Chinese</option>
+              <option value="en">English</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="fr">French</option>
+              <option value="es">Spanish</option>
+              <option value="de">German</option>
+              <option value="ru">Russian</option>
+              <option value="ar">Arabic</option>
+              <option value="pt">Portuguese</option>
+            </select>
+          </div>
+          <div class="param-group" data-field="user">
+            <label>User</label>
+            <div class="input-with-history">
+              <input type="text" id="fromUserInput" class="param-input" placeholder="From user (@username)" autocomplete="off">
+              <div id="fromUserDropdown" class="search-history-dropdown hidden">
+                <div class="search-history-header">
+                  <span class="history-title">Recent Users</span>
+                  <button class="clear-history-btn" data-history="fromUser" title="Clear history" aria-label="Clear history">
+                    <i class="ri-delete-bin-line"></i>
+                  </button>
+                </div>
+                <div class="search-history-list" data-history-list="fromUser">
+                  <!-- History items will be inserted here -->
+                </div>
+                <div class="search-history-empty" style="display: none;">
+                  <i class="ri-history-line"></i>
+                  <span>No history</span>
+                </div>
+              </div>
+            </div>
+            <div class="input-with-history" style="margin-top: 8px;">
+              <input type="text" id="toUserInput" class="param-input" placeholder="To user (@username)" autocomplete="off">
+              <div id="toUserDropdown" class="search-history-dropdown hidden">
+                <div class="search-history-header">
+                  <span class="history-title">Recent Users</span>
+                  <button class="clear-history-btn" data-history="toUser" title="Clear history" aria-label="Clear history">
+                    <i class="ri-delete-bin-line"></i>
+                  </button>
+                </div>
+                <div class="search-history-list" data-history-list="toUser">
+                  <!-- History items will be inserted here -->
+                </div>
+                <div class="search-history-empty" style="display: none;">
+                  <i class="ri-history-line"></i>
+                  <span>No history</span>
+                </div>
+              </div>
+            </div>
+            <div class="input-with-history" style="margin-top: 8px;">
+              <input type="text" id="mentionedUserInput" class="param-input" placeholder="Mentioning user (@username)" autocomplete="off">
+              <div id="mentionedUserDropdown" class="search-history-dropdown hidden">
+                <div class="search-history-header">
+                  <span class="history-title">Recent Users</span>
+                  <button class="clear-history-btn" data-history="mentionedUser" title="Clear history" aria-label="Clear history">
+                    <i class="ri-delete-bin-line"></i>
+                  </button>
+                </div>
+                <div class="search-history-list" data-history-list="mentionedUser">
+                  <!-- History items will be inserted here -->
+                </div>
+                <div class="search-history-empty" style="display: none;">
+                  <i class="ri-history-line"></i>
+                  <span>No history</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="param-group" data-field="list">
+            <label>List ID</label>
+            <div class="input-with-history">
+              <input type="text" id="listInput" class="param-input" placeholder="List ID" autocomplete="off">
+              <div id="listDropdown" class="search-history-dropdown hidden">
+                <div class="search-history-header">
+                  <span class="history-title">Recent Lists</span>
+                  <button class="clear-history-btn" data-history="list" title="Clear history" aria-label="Clear history">
+                    <i class="ri-delete-bin-line"></i>
+                  </button>
+                </div>
+                <div class="search-history-list" data-history-list="list">
+                  <!-- History items will be inserted here -->
+                </div>
+                <div class="search-history-empty" style="display: none;">
+                  <i class="ri-history-line"></i>
+                  <span>No history</span>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="param-group" data-field="timeRange">
             <label>Time Range</label>
             <div class="param-buttons">
+              <button class="param-btn" data-param="timeRange" data-value="">Any</button>
               <button class="param-btn" data-param="timeRange" data-value="24h">24h</button>
               <button class="param-btn" data-param="timeRange" data-value="48h">48h</button>
               <button class="param-btn" data-param="timeRange" data-value="7d">7d</button>
@@ -289,6 +391,10 @@
                 <input type="checkbox" data-param="contentType" value="links">
                 <span>Links</span>
               </label>
+              <label class="param-checkbox">
+                <input type="checkbox" data-param="contentType" value="images">
+                <span>Images</span>
+              </label>
             </div>
           </div>
           <div class="param-group" data-field="exclude">
@@ -306,7 +412,24 @@
           </div>
           <div class="param-group" data-field="excludeWords">
             <label>Exclude Words</label>
-            <input type="text" id="excludeWordsInput" class="param-input" placeholder="female, woman, hair">
+            <div class="input-with-history">
+              <input type="text" id="excludeWordsInput" class="param-input" placeholder="female, woman, hair" autocomplete="off">
+              <div id="excludeWordsDropdown" class="search-history-dropdown hidden">
+                <div class="search-history-header">
+                  <span class="history-title">Recent Excludes</span>
+                  <button class="clear-history-btn" data-history="excludeWords" title="Clear history" aria-label="Clear history">
+                    <i class="ri-delete-bin-line"></i>
+                  </button>
+                </div>
+                <div class="search-history-list" data-history-list="excludeWords">
+                  <!-- History items will be inserted here -->
+                </div>
+                <div class="search-history-empty" style="display: none;">
+                  <i class="ri-history-line"></i>
+                  <span>No history</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -360,6 +483,18 @@
             <span>Search Keywords</span>
           </label>
           <label class="settings-checkbox">
+            <input type="checkbox" data-field="language" checked>
+            <span>Language</span>
+          </label>
+          <label class="settings-checkbox">
+            <input type="checkbox" data-field="user" checked>
+            <span>User</span>
+          </label>
+          <label class="settings-checkbox">
+            <input type="checkbox" data-field="list" checked>
+            <span>List</span>
+          </label>
+          <label class="settings-checkbox">
             <input type="checkbox" data-field="timeRange" checked>
             <span>Time Range</span>
           </label>
@@ -384,6 +519,26 @@
       <div class="modal-footer">
         <button type="button" class="modal-btn btn-secondary" id="panelSettingsCancelBtn">Cancel</button>
         <button type="button" class="modal-btn btn-primary" id="panelSettingsSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirmModal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3 id="confirmTitle">Confirm</h3>
+        <button class="modal-close" id="confirmCloseBtn">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="modal-btn btn-secondary" id="confirmCancelBtn">Cancel</button>
+        <button type="button" class="modal-btn btn-danger" id="confirmOkBtn">Confirm</button>
       </div>
     </div>
   </div>

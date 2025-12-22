@@ -1936,6 +1936,25 @@ tr:hover {
   color: var(--text-dim);
 }
 
+/* Input with history wrapper */
+.input-with-history {
+  position: relative;
+  width: 100%;
+}
+
+.input-with-history .param-input {
+  width: 100%;
+}
+
+.input-with-history .search-history-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 100;
+}
+
 /* Panel Settings Modal Styles */
 .settings-list {
   display: flex;
@@ -2049,6 +2068,10 @@ tr:hover {
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal-content.modal-sm {
+  max-width: 380px;
 }
 
 .modal-header {

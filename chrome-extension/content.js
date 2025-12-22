@@ -59,10 +59,14 @@ let activeCacheScenarioId = DEFAULT_SCENARIO_ID;
 
 function getScenarioTweetMap(scenarioId) {
   const normalized = normalizeScenarioId(scenarioId);
+  console.log('[getScenarioTweetMap] Getting map for scenario:', normalized);
   if (!scenarioTweetMaps.has(normalized)) {
+    console.log('[getScenarioTweetMap] Creating new map for scenario:', normalized);
     scenarioTweetMaps.set(normalized, new Map());
   }
-  return scenarioTweetMaps.get(normalized);
+  const map = scenarioTweetMaps.get(normalized);
+  console.log('[getScenarioTweetMap] Map size:', map.size);
+  return map;
 }
 
 function switchScenarioCache(targetScenarioId) {
@@ -85,7 +89,18 @@ function serializeScenarioCaches() {
 // Helper to save cache
 function saveCache() {
   const payload = serializeScenarioCaches();
-  chrome.storage.local.set({ [SCENARIO_CACHE_KEY]: payload });
+  console.log('[saveCache] Serializing cache, payload:', payload);
+  console.log('[saveCache] Number of scenarios:', Object.keys(payload).length);
+  Object.keys(payload).forEach(scenarioId => {
+    console.log(`[saveCache] Scenario "${scenarioId}" has ${payload[scenarioId].length} tweets`);
+  });
+  chrome.storage.local.set({ [SCENARIO_CACHE_KEY]: payload }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('[saveCache] Error saving to Chrome storage:', chrome.runtime.lastError);
+    } else {
+      console.log('[saveCache] Successfully saved to Chrome storage');
+    }
+  });
 }
 
 function initializeScenarioCaches() {
@@ -1578,3 +1593,353 @@ window.addEventListener('message', (event) => {
 });
 
 resumePendingInlineAction();
+
+// ============================================================================
+// Quick Add to Scenario Button Feature
+// ============================================================================
+
+// 识别当前场景
+function detectCurrentScenario() {
+  const path = window.location.pathname;
+  const href = window.location.href;
+
+  // Check analytics page
+  if (path.startsWith('/i/account_analytics/content')) {
+    console.log('X Data Scraper: Detected scenario - My Posts');
+    return 'analytics_auto';
+  }
+
+  // Check bookmarks page
+  if (path.startsWith('/i/bookmarks')) {
+    console.log('X Data Scraper: Detected scenario - Bookmarks');
+    return 'bookmarks_auto';
+  }
+
+  // All other pages use current_auto (search, lists, profiles, etc.)
+  console.log('X Data Scraper: Detected scenario - Current Page', { path, href });
+  return 'current_auto';
+}
+
+// 从单个article元素抓取推文数据
+function extractTweetDataFromArticle(article) {
+  console.log('[extractTweetDataFromArticle] Starting extraction');
+
+  // 1. Extract Tweet ID and Link
+  const links = article.querySelectorAll('a[href*="/status/"], a[href*="/content/"]');
+  let tweetUrl = null;
+  let tweetId = null;
+
+  for (const link of links) {
+    const href = link.getAttribute('href');
+    if (!href) continue;
+    const statusMatch = href.match(/\/status\/(\d+)/);
+    const contentMatch = href.match(/\/content\/(\d+)/);
+
+    const id = statusMatch ? statusMatch[1] : (contentMatch ? contentMatch[1] : null);
+
+    if (id) {
+      tweetId = id;
+      tweetUrl = buildTweetPermalink(href, tweetId);
+      console.log('[extractTweetDataFromArticle] Found tweet ID:', tweetId);
+      break;
+    }
+  }
+
+  if (!tweetId) {
+    console.warn('[extractTweetDataFromArticle] No tweet ID found');
+    return null;
+  }
+
+  // 2. Extract Text
+  const textNode = article.querySelector('div[dir="auto"], div[data-testid="tweetText"]');
+  const text = textNode ? textNode.innerText.trim() : "";
+  console.log('[extractTweetDataFromArticle] Extracted text length:', text.length);
+
+  // 3. Extract Images
+  const images = [];
+  const imgs = article.querySelectorAll('img');
+  imgs.forEach(img => {
+    const src = img.src;
+    if (src && src.includes('pbs.twimg.com/media')) {
+      images.push(src);
+    }
+  });
+  console.log('[extractTweetDataFromArticle] Extracted images count:', images.length);
+
+  // 4. Extract Stats
+  const stats = {
+    replies: getStatValue(article, 'reply', 'icon-reply-stroke'),
+    retweets: getStatValue(article, 'retweet', 'icon-retweet-stroke'),
+    likes: getStatValue(article, 'like', 'icon-heart-stroke'),
+    views: 0,
+    bookmarks: getStatValue(article, 'bookmark', 'icon-bookmark-stroke')
+  };
+
+  // Views extraction
+  const analyticsLink = article.querySelector('a[href*="/analytics"]');
+  if (analyticsLink) {
+    const label = analyticsLink.getAttribute('aria-label') || analyticsLink.innerText || "";
+    const parsedViews = parseCount(label);
+    stats.views = parsedViews !== null ? parsedViews : 0;
+  } else {
+    const viewGroup = article.querySelector('[data-testid="app-text-transition-container"]');
+    if (viewGroup) {
+      const parsedViews = parseCount(viewGroup.innerText);
+      stats.views = parsedViews !== null ? parsedViews : 0;
+    } else {
+      stats.views = getStatValue(article, null, 'icon-bar-chart');
+    }
+  }
+  console.log('[extractTweetDataFromArticle] Extracted stats:', stats);
+
+  // 5. Extract timestamp
+  const timestamp = extractTimestamp(article);
+  console.log('[extractTweetDataFromArticle] Extracted timestamp:', timestamp);
+
+  return {
+    id: tweetId,
+    url: tweetUrl,
+    text: text,
+    images: [...new Set(images)],
+    stats: stats,
+    timestamp: timestamp
+  };
+}
+
+// 添加推文到当前场景
+function addTweetToCurrentScenario(tweetData, scenarioId) {
+  console.log('[addTweetToCurrentScenario] Called with:', { tweetData, scenarioId });
+
+  if (!tweetData || !tweetData.id) {
+    console.error('[addTweetToCurrentScenario] Invalid tweet data');
+    return false;
+  }
+
+  // Switch to the target scenario cache
+  const targetMap = getScenarioTweetMap(scenarioId);
+  console.log('[addTweetToCurrentScenario] Got target map, size:', targetMap.size);
+
+  // Check if tweet already exists
+  if (targetMap.has(tweetData.id)) {
+    console.log('[addTweetToCurrentScenario] Tweet exists, merging');
+    // Merge with existing data
+    const existing = targetMap.get(tweetData.id);
+    const merged = {
+      ...existing,
+      text: tweetData.text || existing.text || "",
+      images: tweetData.images.length > 0 ? tweetData.images : (existing.images || []),
+      stats: tweetData.stats || existing.stats || {},
+      timestamp: tweetData.timestamp || existing.timestamp || null,
+      url: tweetData.url || existing.url
+    };
+    targetMap.set(tweetData.id, merged);
+    console.log('[addTweetToCurrentScenario] Merged tweet data:', merged);
+  } else {
+    console.log('[addTweetToCurrentScenario] New tweet, adding');
+    // Add new tweet
+    targetMap.set(tweetData.id, tweetData);
+  }
+
+  console.log('[addTweetToCurrentScenario] Map size after add:', targetMap.size);
+
+  // Save to storage
+  console.log('[addTweetToCurrentScenario] Calling saveCache()');
+  saveCache();
+
+  // Notify popup if open
+  chrome.runtime.sendMessage({
+    action: "update_count",
+    scenarioId: scenarioId,
+    count: targetMap.size
+  });
+
+  return true;
+}
+
+// 显示成功提示
+function showQuickAddToast(scenarioLabel, isNew) {
+  const toastId = 'x-data-quick-add-toast';
+  let toast = document.getElementById(toastId);
+
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = toastId;
+    toast.style.cssText = `
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      background: #00ba7c;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0, 186, 124, 0.4);
+      z-index: 999999;
+      opacity: 0;
+      transform: translateX(20px);
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    `;
+    document.body.appendChild(toast);
+  }
+
+  const icon = isNew ? '✓' : '↻';
+  const message = isNew ? `已添加到 ${scenarioLabel}` : `已更新 ${scenarioLabel}`;
+  toast.innerHTML = `<span style="font-size: 16px;">${icon}</span><span>${message}</span>`;
+
+  // Show animation
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(0)';
+  });
+
+  // Hide after delay
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 300);
+  }, 2500);
+}
+
+// 创建快速添加按钮
+function createQuickAddButton() {
+  const button = document.createElement('div');
+  button.className = 'css-175oi2r r-18u37iz r-1h0z5md r-13awgt0';
+  button.setAttribute('data-x-quick-add-button', 'true');
+
+  button.innerHTML = `
+    <button aria-label="添加到当前场景" role="button"
+            class="css-175oi2r r-1777fci r-bt1l66 r-bztko3 r-lrvibr r-1loqt21 r-1ny4l3l"
+            type="button" style="cursor: pointer;">
+      <div dir="ltr" class="css-146c3p1 r-bcqeeo r-1ttztb7 r-qvutc0 r-37j5jr r-a023e6 r-rjixqe r-16dba41 r-1awozwy r-6koalj r-1h0z5md r-o7ynqc r-clp7b1 r-3s2u2q" style="color: rgb(113, 118, 123);">
+        <div class="css-175oi2r r-xoduu5">
+          <div class="css-175oi2r r-xoduu5 r-1p0dtai r-1d2f490 r-u8s1d r-zchlnj r-ipm5af r-1niwhzg r-sdzlij r-xf4iuw r-o7ynqc r-6416eg r-1ny4l3l"></div>
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="r-4qtqp9 r-yyyyoo r-dnmrzs r-bnwqim r-lrvibr r-m6rgpd r-1xvli5t r-1hdv0qi">
+            <g><path d="M16.5 3C19.538 3 22 5.5 22 9c0 7-7.5 11-10 12.5-1.978-1.187-7.084-3.937-9.132-8.5h2.1c1.784 3.477 5.653 5.794 7.032 6.572 1.726-1.093 8-4.962 8-10.072 0-2.503-1.71-4.5-4.5-4.5-1.446 0-2.726.686-3.5 1.755-.774-1.07-2.054-1.755-3.5-1.755-2.79 0-4.5 1.997-4.5 4.5 0 .414.048.817.14 1.207H2.076C2.025 9.822 2 9.414 2 9c0-3.5 2.5-6 5.5-6C9.36 3 11 4 12 5c1-1 2.64-2 4.5-2zM9 16h2v2h2v-2h2v-2h-2v-2h-2v2H9v2z"></path></g>
+          </svg>
+        </div>
+      </div>
+    </button>
+  `;
+
+  return button;
+}
+
+// 注入快速添加按钮到推文操作行
+function injectQuickAddButton(article) {
+  // 检查是否已经注入过
+  if (article.querySelector('[data-x-quick-add-button="true"]')) {
+    return;
+  }
+
+  // 找到操作按钮组
+  const actionGroup = article.querySelector('[role="group"]');
+  if (!actionGroup) return;
+
+  // 找到收藏按钮
+  const bookmarkButton = article.querySelector('[data-testid="bookmark"]');
+  if (!bookmarkButton) return;
+
+  // 获取收藏按钮的父容器
+  const bookmarkContainer = bookmarkButton.closest('.css-175oi2r.r-18u37iz.r-1h0z5md');
+  if (!bookmarkContainer) return;
+
+  // 创建并插入快速添加按钮（在收藏按钮之前）
+  const quickAddButton = createQuickAddButton();
+  bookmarkContainer.parentNode.insertBefore(quickAddButton, bookmarkContainer);
+
+  // 添加点击事件
+  const btn = quickAddButton.querySelector('button');
+  const iconDiv = btn.querySelector('div[dir="ltr"]');
+
+  // 添加悬停效果
+  btn.addEventListener('mouseenter', () => {
+    if (iconDiv) {
+      iconDiv.style.color = 'rgb(29, 155, 240)'; // Twitter blue
+    }
+  });
+
+  btn.addEventListener('mouseleave', () => {
+    if (iconDiv) {
+      iconDiv.style.color = 'rgb(113, 118, 123)'; // Default gray
+    }
+  });
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    console.log('[Quick Add] Button clicked');
+
+    // 抓取推文数据
+    const tweetData = extractTweetDataFromArticle(article);
+    console.log('[Quick Add] Extracted tweet data:', tweetData);
+    if (!tweetData) {
+      console.warn('X Data Scraper: Failed to extract tweet data');
+      return;
+    }
+
+    // 识别当前场景
+    const scenarioId = detectCurrentScenario();
+    console.log('[Quick Add] Detected scenario:', scenarioId);
+    const scenario = SCRAPE_SCENARIOS[scenarioId];
+    console.log('[Quick Add] Scenario config:', scenario);
+
+    // 检查是否是新推文
+    const targetMap = getScenarioTweetMap(scenarioId);
+    console.log('[Quick Add] Target map size before:', targetMap.size);
+    const isNew = !targetMap.has(tweetData.id);
+    console.log('[Quick Add] Is new tweet:', isNew);
+
+    // 添加到场景
+    const success = addTweetToCurrentScenario(tweetData, scenarioId);
+    console.log('[Quick Add] Add to scenario success:', success);
+
+    if (success) {
+      // 显示成功提示
+      showQuickAddToast(scenario.label, isNew);
+
+      // 按钮动画反馈
+      if (iconDiv) {
+        iconDiv.style.color = '#00ba7c';
+        setTimeout(() => {
+          iconDiv.style.color = 'rgb(113, 118, 123)';
+        }, 1000);
+      }
+    }
+  });
+}
+
+// 使用MutationObserver监听推文加载
+function observeTweetsForQuickAdd() {
+  const observer = new MutationObserver((mutations) => {
+    // 找到所有article元素
+    const articles = document.querySelectorAll('article');
+    articles.forEach(article => {
+      injectQuickAddButton(article);
+    });
+  });
+
+  // 开始观察
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // 初始注入（页面已有的推文）
+  const articles = document.querySelectorAll('article');
+  articles.forEach(article => {
+    injectQuickAddButton(article);
+  });
+}
+
+// 启动快速添加功能
+observeTweetsForQuickAdd();
+console.log('X Data Scraper: Quick Add to Scenario button feature initialized');
