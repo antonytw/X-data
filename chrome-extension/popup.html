@@ -123,15 +123,25 @@
             aria-label="Fetch fresh details via VxTwitter">
             <i class="ri-refresh-line" aria-hidden="true"></i>
           </button>
-          <button id="copyBtn" class="icon-btn" title="Copy Tweet Links" aria-label="Copy Tweet Links">
-            <i class="ri-file-copy-line" aria-hidden="true"></i>
-          </button>
-          <button id="pdfBtn" class="icon-btn" title="Generate PDF" aria-label="Generate PDF">
-            <i class="ri-file-pdf-line" aria-hidden="true"></i>
-          </button>
-          <button id="downloadBtn" class="icon-btn" title="Download JSON" aria-label="Download JSON">
-            <i class="ri-download-2-line" aria-hidden="true"></i>
-          </button>
+          <div class="more-actions-container">
+            <button id="moreActionsBtn" class="icon-btn" title="More actions" aria-label="More actions">
+              <i class="ri-more-fill" aria-hidden="true"></i>
+            </button>
+            <div id="moreActionsMenu" class="more-actions-menu hidden">
+              <button class="menu-item" data-action="copy">
+                <i class="ri-file-copy-line"></i>
+                <span>Copy Links</span>
+              </button>
+              <button class="menu-item" data-action="pdf">
+                <i class="ri-file-pdf-line"></i>
+                <span>Generate PDF</span>
+              </button>
+              <button class="menu-item" data-action="download">
+                <i class="ri-download-2-line"></i>
+                <span>Download JSON</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

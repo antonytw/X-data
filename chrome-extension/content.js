@@ -140,6 +140,17 @@ function initializeScenarioCaches() {
 
 initializeScenarioCaches();
 
+// Inject Remix Icon CSS for external tooltip icons
+function injectRemixIconCSS() {
+  if (document.getElementById('x-data-remixicon-css')) return;
+  const link = document.createElement('link');
+  link.id = 'x-data-remixicon-css';
+  link.rel = 'stylesheet';
+  link.href = 'https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css';
+  document.head.appendChild(link);
+}
+injectRemixIconCSS();
+
 function parseCount(value) {
   if (!value) return null;
   const normalized = value.toString().replace(/,/g, '').trim();
@@ -788,12 +799,12 @@ async function autoScrollLoop(targetScenarioId = activeCacheScenarioId) {
     // Scrape first
     const newItems = scrapeCurrentView();
 
-    // Notify
+    // Notify (ignore errors if popup is closed)
     chrome.runtime.sendMessage({
       action: "update_count",
       scenarioId,
       count: allTweetsMap.size
-    });
+    }).catch(() => {});
 
     // On first iteration, don't scroll yet - just scrape what's visible
     // This gives users immediate feedback and allows them to see initial results
@@ -962,12 +973,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Keep existing data - incremental scraping
         console.log(`X Data Scraper: Starting auto-scroll (${scenario.label || scenario.id}) with ${allTweetsMap.size} existing tweets`);
         autoScrollLoop(scenarioId).then(data => {
-          // Final data sent when loop finishes naturally
+          // Final data sent when loop finishes naturally (ignore errors if popup is closed)
           chrome.runtime.sendMessage({
             action: "scroll_finished",
             scenarioId,
             data: data
-          });
+          }).catch(() => {});
         });
         sendResponse({ success: true, status: "started", scenarioId });
       });
@@ -1122,6 +1133,8 @@ let lastTooltipRowRect = null;
 let externalTooltipHideTimer = null;
 let externalTooltipHovering = false;
 const EXTERNAL_ACTION_ICONS = {
+  copyLink: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+  delete: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
   reply: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12a3 3 0 013 3v6a3 3 0 01-3 3H9l-4 4V8a3 3 0 013-3z"/></svg>',
   retweet: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"/></svg>',
   like: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-8.5-7.43C1 10.5 2.75 6 6.5 6c2.04 0 3.57 1.21 4.5 2.54C12.93 7.21 14.46 6 16.5 6c3.75 0 5.5 4.5 3 7.57C18 16.65 12 21 12 21z"/></svg>',
@@ -1452,18 +1465,21 @@ function showExternalTooltip(payload) {
   const tweetId = tweet.id;
   const tweetUrl = buildTweetPermalink(tweet.url, tweetId);
   const localTweetUrl = alignUrlToCurrentOrigin(tweetUrl);
+  // Store the scenario ID from payload for later use in delete
+  const tooltipScenarioId = payload.scenarioId || activeCacheScenarioId;
+  console.log('[Tooltip] Showing tooltip for scenario:', tooltipScenarioId, 'tweet:', tweetId);
   let previewHtml = '';
   if (preview && preview.url) {
     const escapedUrl = escapeHtmlInline(preview.url);
     previewHtml = `
-      <div style="margin-bottom:10px;border-radius:10px;overflow:hidden;border:1px solid #2f3336;background:#0f1115;position:relative;height:${TOOLTIP_PREVIEW_MAX_HEIGHT}px;">
+      <div style="margin-top:10px;margin-bottom:10px;border-radius:10px;overflow:hidden;border:1px solid #2f3336;background:#0f1115;position:relative;height:${TOOLTIP_PREVIEW_MAX_HEIGHT}px;">
         <img src="${escapedUrl}" alt="${escapeHtmlInline(preview.isVideo ? 'Video preview' : 'Tweet image')}" style="width:100%;height:100%;display:block;object-fit:cover;object-position:center;">
         ${preview.isVideo ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,0.65);color:#f7f9f9;border-radius:6px;padding:2px 6px;font-size:12px;line-height:1;">▶</span>' : ''}
       </div>
     `;
   } else if (preview && preview.isVideo) {
     previewHtml = `
-      <div style="margin-bottom:10px;border-radius:10px;border:1px dashed #2f3336;height:${Math.min(TOOLTIP_PREVIEW_MAX_HEIGHT, 180)}px;display:flex;align-items:center;justify-content:center;color:#8b98a5;font-size:18px;background:rgba(255,255,255,0.02);">
+      <div style="margin-top:10px;margin-bottom:10px;border-radius:10px;border:1px dashed #2f3336;height:${Math.min(TOOLTIP_PREVIEW_MAX_HEIGHT, 180)}px;display:flex;align-items:center;justify-content:center;color:#8b98a5;font-size:18px;background:rgba(255,255,255,0.02);">
         ▶ 视频内容
       </div>
     `;
@@ -1505,7 +1521,7 @@ function showExternalTooltip(payload) {
     }
   ].map(def => ({
     ...def,
-    count: formatStatValue(stats[def.statKey]),
+    count: def.statKey ? formatStatValue(stats[def.statKey]) : null,
     targetUrl: localTweetUrl || null
   }));
 
@@ -1526,7 +1542,15 @@ function showExternalTooltip(payload) {
   `;
 
   el.innerHTML = `
-    <div style="font-size:12px;color:#8b98a5;margin-bottom:6px;">${escapeHtmlInline(tweet.timestamp || '—')}</div>
+    <div style="position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:10;">
+      <button class="tooltip-icon-btn copy-link-btn" data-copy-url="${escapeHtmlInline(localTweetUrl || '')}" title="复制链接" style="background:rgba(0,0,0,0.5);border:none;color:#eff3f4;cursor:pointer;padding:5px;border-radius:6px;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);width:28px;height:28px;">
+        ${EXTERNAL_ACTION_ICONS.copyLink}
+      </button>
+      <button class="tooltip-icon-btn delete-btn" data-tweet-id="${escapeHtmlInline(tweetId || '')}" data-scenario-id="${escapeHtmlInline(tooltipScenarioId)}" title="删除" style="background:rgba(0,0,0,0.5);border:none;color:#eff3f4;cursor:pointer;padding:6px;border-radius:6px;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);width:28px;height:28px;">
+        ${EXTERNAL_ACTION_ICONS.delete}
+      </button>
+    </div>
+    <div style="font-size:12px;color:#8b98a5;margin-bottom:8px;">${escapeHtmlInline(tweet.timestamp || '—')}</div>
     ${previewHtml}
     <div style="margin-bottom:10px;">
       <div style="position:relative;">
@@ -1541,6 +1565,96 @@ function showExternalTooltip(payload) {
   el.style.display = 'block';
   applyExternalTooltipTextCollapse();
   wireExternalTooltipActions(tweetId || null, localTweetUrl || '');
+
+  // Wire up header buttons
+  const copyBtn = el.querySelector('.copy-link-btn');
+  const deleteBtn = el.querySelector('.delete-btn');
+
+  if (copyBtn) {
+    copyBtn.addEventListener('mouseenter', () => {
+      copyBtn.style.color = '#1d9bf0';
+      copyBtn.style.background = 'rgba(29, 155, 240, 0.2)';
+    });
+    copyBtn.addEventListener('mouseleave', () => {
+      copyBtn.style.color = '#eff3f4';
+      copyBtn.style.background = 'rgba(0, 0, 0, 0.5)';
+    });
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const url = copyBtn.dataset.copyUrl;
+      if (!url) return;
+
+      navigator.clipboard.writeText(url).then(() => {
+        const originalIcon = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        copyBtn.style.color = '#10b981';
+        copyBtn.style.background = 'rgba(16, 185, 129, 0.2)';
+        setTimeout(() => {
+          copyBtn.innerHTML = originalIcon;
+          copyBtn.style.color = '#eff3f4';
+          copyBtn.style.background = 'rgba(0, 0, 0, 0.5)';
+        }, 1500);
+      }).catch(err => {
+        console.error('Failed to copy link:', err);
+      });
+    });
+  }
+
+  if (deleteBtn) {
+    deleteBtn.addEventListener('mouseenter', () => {
+      deleteBtn.style.color = '#f91880';
+      deleteBtn.style.background = 'rgba(249, 24, 128, 0.2)';
+    });
+    deleteBtn.addEventListener('mouseleave', () => {
+      deleteBtn.style.color = '#eff3f4';
+      deleteBtn.style.background = 'rgba(0, 0, 0, 0.5)';
+    });
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const deleteTweetId = deleteBtn.dataset.tweetId;
+      const deleteScenarioId = deleteBtn.dataset.scenarioId;
+
+      console.log('[Delete] Attempting to delete tweet:', deleteTweetId);
+      console.log('[Delete] Using scenario ID from button:', deleteScenarioId);
+      console.log('[Delete] Active scenario ID:', activeCacheScenarioId);
+
+      if (!deleteTweetId) {
+        console.warn('[Delete] No tweet ID found');
+        return;
+      }
+
+      // Use the scenario ID from the button (passed from popup)
+      const targetScenarioId = deleteScenarioId || activeCacheScenarioId;
+      const targetMap = getScenarioTweetMap(targetScenarioId);
+
+      console.log('[Delete] Target map size before:', targetMap.size);
+      console.log('[Delete] Tweet exists in map:', targetMap.has(deleteTweetId));
+
+      if (targetMap.has(deleteTweetId)) {
+        targetMap.delete(deleteTweetId);
+        console.log('[Delete] Tweet deleted successfully, new size:', targetMap.size);
+        saveCache();
+
+        // Notify popup to refresh (ignore errors if popup is closed)
+        chrome.runtime.sendMessage({
+          action: "update_count",
+          scenarioId: targetScenarioId,
+          count: targetMap.size
+        }).catch(() => {});
+
+        hideExternalTooltip();
+      } else {
+        console.error('[Delete] Tweet not found in map:', deleteTweetId, 'scenario:', targetScenarioId);
+        // Still hide tooltip and send update to refresh UI
+        hideExternalTooltip();
+        chrome.runtime.sendMessage({
+          action: "update_count",
+          scenarioId: targetScenarioId,
+          count: targetMap.size
+        }).catch(() => {});
+      }
+    });
+  }
   lastTooltipRowRect = payload.rowRect || null;
 
   requestAnimationFrame(() => {
@@ -1746,12 +1860,12 @@ function addTweetToCurrentScenario(tweetData, scenarioId) {
   console.log('[addTweetToCurrentScenario] Calling saveCache()');
   saveCache();
 
-  // Notify popup if open
+  // Notify popup if open (ignore errors if popup is closed)
   chrome.runtime.sendMessage({
     action: "update_count",
     scenarioId: scenarioId,
     count: targetMap.size
-  });
+  }).catch(() => {});
 
   return true;
 }

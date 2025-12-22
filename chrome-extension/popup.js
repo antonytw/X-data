@@ -499,18 +499,158 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // More Actions Menu
+    const moreActionsBtn = document.getElementById('moreActionsBtn');
+    const moreActionsMenu = document.getElementById('moreActionsMenu');
+
+    function toggleMoreActionsMenu() {
+        moreActionsMenu.classList.toggle('hidden');
+    }
+
+    function hideMoreActionsMenu() {
+        moreActionsMenu.classList.add('hidden');
+    }
+
+    if (moreActionsBtn) {
+        moreActionsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleMoreActionsMenu();
+        });
+    }
+
+    // Click outside to close menu
+    document.addEventListener('click', (e) => {
+        if (moreActionsMenu && !moreActionsMenu.classList.contains('hidden')) {
+            if (!e.target.closest('.more-actions-container')) {
+                hideMoreActionsMenu();
+            }
+        }
+    });
+
+    // Menu item handlers
+    if (moreActionsMenu) {
+        moreActionsMenu.addEventListener('click', (e) => {
+            const menuItem = e.target.closest('.menu-item');
+            if (!menuItem) return;
+
+            const action = menuItem.dataset.action;
+            hideMoreActionsMenu();
+
+            switch (action) {
+                case 'copy':
+                    handleCopyLinks();
+                    break;
+                case 'pdf':
+                    handleGeneratePDF();
+                    break;
+                case 'download':
+                    handleDownloadJSON();
+                    break;
+            }
+        });
+    }
+
+    function handleCopyLinks() {
+        // Only copy tweet links from the currently active data scenario
+        const activeData = getScenarioData(activeDataScenarioId);
+
+        if (!activeData || activeData.length === 0) {
+            showToast('没有可复制的推文链接', 'info', 2000);
+            return;
+        }
+
+        const tweetLinks = activeData.map(tweet => {
+            const url = resolveTweetUrl(tweet);
+            return url || `https://x.com/i/web/status/${tweet.id}`;
+        }).filter(url => url); // Filter out any null URLs
+
+        if (tweetLinks.length === 0) {
+            showToast('没有有效的推文链接', 'info', 2000);
+            return;
+        }
+
+        // Create text with each link on a new line
+        const text = tweetLinks.join('\n');
+
+        // AIDEV-NOTE: document.execCommand('copy') is deprecated but still widely supported
+        // We use it as a fallback for popup pages where Clipboard API may be blocked
+        // Consider migrating to Clipboard API with proper permissions when Chrome supports it in popups
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+            const success = document.execCommand('copy');
+
+            if (success) {
+                showToast(`已复制 ${tweetLinks.length} 条推文链接`, 'success', 2000);
+            } else {
+                showToast('复制失败，请重试', 'error', 2000);
+            }
+        } catch (err) {
+            console.error('X Data Scraper: Failed to copy tweet links', err);
+            showToast(`复制失败: ${err.message}`, 'error', 3000);
+        } finally {
+            // Always cleanup textarea
+            if (textarea.parentNode) {
+                document.body.removeChild(textarea);
+            }
+        }
+    }
+
+    function handleGeneratePDF() {
+        // Get tweet links from the currently active data scenario
+        const activeData = getScenarioData(activeDataScenarioId);
+
+        if (!activeData || activeData.length === 0) {
+            showToast('没有可生成PDF的推文链接', 'info', 2000);
+            return;
+        }
+
+        const tweetLinks = activeData.map(tweet => {
+            const url = resolveTweetUrl(tweet);
+            return url || `https://x.com/i/web/status/${tweet.id}`;
+        }).filter(url => url); // Filter out any null URLs
+
+        if (tweetLinks.length === 0) {
+            showToast('没有有效的推文链接', 'info', 2000);
+            return;
+        }
+
+        // Join links with | separator
+        const urlsParam = tweetLinks.join('|');
+
+        // Construct x2pdf URL
+        const pdfUrl = `https://x2pdf.vercel.app/?urls=${encodeURIComponent(urlsParam)}`;
+
+        // Open in new tab
+        window.open(pdfUrl, '_blank', 'noopener');
+
+        showToast(`正在生成 ${tweetLinks.length} 条推文的PDF`, 'success', 2000);
+    }
+
+    function handleDownloadJSON() {
+        const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `x-data-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+    }
+
     const scrapeBtn = document.getElementById('scrapeBtn');
     const deleteBtn = document.getElementById('deleteBtn');
     const autoScrollBtn = document.getElementById('autoScrollBtn');
-    const copyBtn = document.getElementById('copyBtn');
-    const pdfBtn = document.getElementById('pdfBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
     const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
     const iconMarkup = {
         refresh: '<i class="ri-refresh-line" aria-hidden="true"></i>',
         refreshLoading: '<i class="ri-loader-4-line icon-spin" aria-hidden="true"></i>',
         copy: '<i class="ri-file-copy-line" aria-hidden="true"></i>',
         copySuccess: '<i class="ri-check-line" aria-hidden="true"></i>',
+        copyLink: '<i class="ri-file-copy-line" aria-hidden="true"></i>',
         download: '<i class="ri-download-2-line" aria-hidden="true"></i>',
         videoBadge: '<i class="ri-play-circle-fill" aria-hidden="true"></i>',
         videoPlaceholder: '<i class="ri-movie-2-line" aria-hidden="true"></i>',
@@ -566,8 +706,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let myPostsTimeRange = 90; // Default to 3M (90 days)
 
     if (refreshDetailsBtn) refreshDetailsBtn.innerHTML = iconMarkup.refresh;
-    if (copyBtn) copyBtn.innerHTML = iconMarkup.copy;
-    if (downloadBtn) downloadBtn.innerHTML = iconMarkup.download;
 
     const tabs = document.querySelectorAll('.tab');
     const views = document.querySelectorAll('.view');
@@ -2057,6 +2195,43 @@ document.addEventListener('DOMContentLoaded', () => {
             tooltipHovering = false;
             scheduleHideTooltip();
         });
+
+        // Handle copy link button clicks using event delegation
+        tooltip.addEventListener('click', (e) => {
+            const copyBtn = e.target.closest('.copy-link-btn');
+            if (!copyBtn) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const url = copyBtn.dataset.url;
+            if (!url) return;
+
+            // Copy to clipboard
+            navigator.clipboard.writeText(url).then(() => {
+                // Visual feedback
+                const originalIcon = copyBtn.querySelector('i');
+                const originalText = copyBtn.querySelector('span').textContent;
+
+                if (originalIcon) {
+                    originalIcon.className = 'ri-check-line';
+                }
+                copyBtn.querySelector('span').textContent = 'Copied!';
+                copyBtn.classList.add('success');
+
+                // Reset after delay
+                setTimeout(() => {
+                    if (originalIcon) {
+                        originalIcon.className = 'ri-links-line';
+                    }
+                    copyBtn.querySelector('span').textContent = originalText;
+                    copyBtn.classList.remove('success');
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy link:', err);
+                showToast('Failed to copy link', 'error', 2000);
+            });
+        });
     }
 
     function setStatus(msg, type = 'normal', autoClear = false) {
@@ -2474,18 +2649,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const tweetUrl = resolveTweetUrl(tweet);
         const actions = [];
 
+        // Copy Link button (shown first)
+        if (tweetUrl) {
+            actions.push({
+                type: 'copy-link',
+                label: 'Copy Link',
+                url: tweetUrl,
+                icon: iconMarkup.copyLink
+            });
+        }
+
         if (tweetId) {
             actions.push({
+                type: 'link',
                 label: 'Reply',
                 href: `https://twitter.com/intent/tweet?in_reply_to=${tweetId}`,
                 icon: iconMarkup.reply
             });
             actions.push({
+                type: 'link',
                 label: 'Retweet',
                 href: `https://twitter.com/intent/retweet?tweet_id=${tweetId}`,
                 icon: iconMarkup.retweet
             });
             actions.push({
+                type: 'link',
                 label: 'Like',
                 href: `https://twitter.com/intent/like?tweet_id=${tweetId}`,
                 icon: iconMarkup.like
@@ -2494,6 +2682,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (tweetUrl) {
             actions.push({
+                type: 'link',
                 label: 'Open',
                 href: tweetUrl,
                 icon: iconMarkup.open
@@ -2502,12 +2691,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!actions.length) return '';
 
-        const buttons = actions.map(action => `
-            <a class="action-btn" href="${action.href}" target="_blank" rel="noopener noreferrer" title="${action.label}">
-                ${action.icon}
-                <span>${action.label}</span>
-            </a>
-        `).join('');
+        const buttons = actions.map(action => {
+            if (action.type === 'copy-link') {
+                return `
+                    <button class="action-btn copy-link-btn" data-url="${escapeHtml(action.url)}" title="${action.label}">
+                        ${action.icon}
+                        <span>${action.label}</span>
+                    </button>
+                `;
+            } else {
+                return `
+                    <a class="action-btn" href="${action.href}" target="_blank" rel="noopener noreferrer" title="${action.label}">
+                        ${action.icon}
+                        <span>${action.label}</span>
+                    </a>
+                `;
+            }
+        }).join('');
 
         return `
             <div class="tooltip-actions">
@@ -2800,7 +3000,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const altText = previewInfo.isVideo ? 'Video preview' : 'Tweet image';
                 imgHtml = `
                     <div class="thumb-visual${previewInfo.isVideo ? ' is-video' : ''}">
-                        <img src="${previewUrl}" alt="${altText}">
+                        <img src="${previewUrl}" alt="${altText}" loading="lazy" decoding="async">
                         ${previewInfo.isVideo ? `<span class="video-badge" aria-hidden="true">${iconMarkup.videoBadge}</span>` : ''}
                     </div>
                 `;
@@ -2941,103 +3141,6 @@ document.addEventListener('DOMContentLoaded', () => {
         handleScenarioClear(activeDataScenarioId);
     });
 
-    copyBtn.addEventListener('click', () => {
-        // Only copy tweet links from the currently active data scenario
-        const activeData = getScenarioData(activeDataScenarioId);
-
-        if (!activeData || activeData.length === 0) {
-            showToast('没有可复制的推文链接', 'info', 2000);
-            return;
-        }
-
-        const tweetLinks = activeData.map(tweet => {
-            const url = resolveTweetUrl(tweet);
-            return url || `https://x.com/i/web/status/${tweet.id}`;
-        }).filter(url => url); // Filter out any null URLs
-
-        if (tweetLinks.length === 0) {
-            showToast('没有有效的推文链接', 'info', 2000);
-            return;
-        }
-
-        // Create text with each link on a new line
-        const text = tweetLinks.join('\n');
-
-        // AIDEV-NOTE: document.execCommand('copy') is deprecated but still widely supported
-        // We use it as a fallback for popup pages where Clipboard API may be blocked
-        // Consider migrating to Clipboard API with proper permissions when Chrome supports it in popups
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-
-        try {
-            const success = document.execCommand('copy');
-
-            if (success) {
-                if (copyBtn) {
-                    copyBtn.innerHTML = iconMarkup.copySuccess;
-                    setTimeout(() => {
-                        if (copyBtn) copyBtn.innerHTML = iconMarkup.copy;
-                    }, 2000);
-                }
-                showToast(`已复制 ${tweetLinks.length} 条推文链接`, 'success', 2000);
-            } else {
-                showToast('复制失败，请重试', 'error', 2000);
-            }
-        } catch (err) {
-            console.error('X Data Scraper: Failed to copy tweet links', err);
-            showToast(`复制失败: ${err.message}`, 'error', 3000);
-        } finally {
-            // Always cleanup textarea
-            if (textarea.parentNode) {
-                document.body.removeChild(textarea);
-            }
-        }
-    });
-
-    pdfBtn.addEventListener('click', () => {
-        // Get tweet links from the currently active data scenario
-        const activeData = getScenarioData(activeDataScenarioId);
-
-        if (!activeData || activeData.length === 0) {
-            showToast('没有可生成PDF的推文链接', 'info', 2000);
-            return;
-        }
-
-        const tweetLinks = activeData.map(tweet => {
-            const url = resolveTweetUrl(tweet);
-            return url || `https://x.com/i/web/status/${tweet.id}`;
-        }).filter(url => url); // Filter out any null URLs
-
-        if (tweetLinks.length === 0) {
-            showToast('没有有效的推文链接', 'info', 2000);
-            return;
-        }
-
-        // Join links with | separator
-        const urlsParam = tweetLinks.join('|');
-
-        // Construct x2pdf URL
-        const pdfUrl = `https://x2pdf.vercel.app/?urls=${encodeURIComponent(urlsParam)}`;
-
-        // Open in new tab
-        window.open(pdfUrl, '_blank', 'noopener');
-
-        showToast(`正在生成 ${tweetLinks.length} 条推文的PDF`, 'success', 2000);
-    });
-
-    downloadBtn.addEventListener('click', () => {
-        const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `x-data-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-    });
-
     if (refreshDetailsBtn) {
         refreshDetailsBtn.addEventListener('click', () => {
             refreshDetailsFromVxTwitter(true);
@@ -3174,6 +3277,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const formattedTime = formatTimestamp(tweet.timestamp);
             const previewInfo = getPreviewInfo(tweet);
             sendEmbeddedTooltip('show_tooltip', {
+                scenarioId: activeDataScenarioId,
                 tweet: {
                     id: tweet.id || null,
                     timestamp: formattedTime.title,
@@ -3234,8 +3338,17 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         const actionsHtml = buildActionButtons(tweet);
+        const tweetUrl = resolveTweetUrl(tweet);
 
         tooltip.innerHTML = `
+            <div class="tooltip-header">
+                <button class="tooltip-icon-btn copy-link-btn" data-url="${escapeHtml(tweetUrl || '')}" title="复制链接">
+                    <i class="ri-file-copy-line"></i>
+                </button>
+                <button class="tooltip-icon-btn delete-btn" data-tweet-id="${escapeHtml(tweet.id || '')}" title="删除">
+                    <i class="ri-delete-bin-4-line"></i>
+                </button>
+            </div>
             <div class="tooltip-time">${safeTime}</div>
             ${previewSection}
             <div class="tooltip-text">${safeText}</div>
@@ -3247,6 +3360,50 @@ document.addEventListener('DOMContentLoaded', () => {
             tableWrapper.classList.add('tooltip-visible');
         }
         positionTooltip(row);
+
+        // Wire up header button events
+        const copyBtn = tooltip.querySelector('.tooltip-header .copy-link-btn');
+        const deleteBtn = tooltip.querySelector('.tooltip-header .delete-btn');
+
+        if (copyBtn) {
+            copyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const url = copyBtn.dataset.url;
+                if (!url) return;
+
+                navigator.clipboard.writeText(url).then(() => {
+                    const icon = copyBtn.querySelector('i');
+                    if (icon) {
+                        icon.className = 'ri-check-line';
+                        copyBtn.classList.add('success');
+                        setTimeout(() => {
+                            icon.className = 'ri-file-copy-line';
+                            copyBtn.classList.remove('success');
+                        }, 1500);
+                    }
+                }).catch(err => {
+                    console.error('Failed to copy link:', err);
+                    showToast('Failed to copy link', 'error', 2000);
+                });
+            });
+        }
+
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tweetId = deleteBtn.dataset.tweetId;
+                if (!tweetId) return;
+
+                const currentData = getScenarioData(activeDataScenarioId);
+                const index = currentData.findIndex(t => t.id === tweetId);
+                if (index !== -1) {
+                    currentData.splice(index, 1);
+                    setScenarioData(activeDataScenarioId, currentData, { persist: true, refreshView: true });
+                    showToast('Tweet deleted', 'success', 2000);
+                    hideTooltip(true);
+                }
+            });
+        }
     }
 
     if (tableContainer) {
