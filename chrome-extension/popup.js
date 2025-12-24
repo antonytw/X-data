@@ -2850,7 +2850,14 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const targets = currentData.filter(tweet => shouldSyncTweet(tweet, force));
+        let targets = currentData.filter(tweet => shouldSyncTweet(tweet, force));
+
+        // Apply current sort order if active
+        if (sortState && sortState.column) {
+            targets = sortData(targets, sortState.column, sortState.direction);
+            console.log(`X Data Scraper: VxTwitter sync - Applied sort order: ${sortState.column} (${sortState.direction})`);
+        }
+
         console.log(`X Data Scraper: VxTwitter sync - Total tweets: ${currentData.length}, Targets: ${targets.length}, Force: ${force}`);
 
         if (targets.length === 0) {

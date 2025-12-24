@@ -745,7 +745,9 @@ function scrapeCurrentView() {
         text: tweetData.text || existing.text || "",
         images: tweetData.images.length > 0 ? tweetData.images : (existing.images || []),
         stats: tweetData.stats || existing.stats || {},
-        timestamp: tweetData.timestamp || existing.timestamp || null,
+        // AIDEV-NOTE: If existing data has been synced via VxTwitter (has vxMeta),
+        // keep its precise timestamp instead of overwriting with potentially fuzzy scraped time.
+        timestamp: (existing.vxMeta && existing.timestamp) ? existing.timestamp : (tweetData.timestamp || existing.timestamp || null),
         url: tweetData.url || existing.url
       };
       allTweetsMap.set(tweetId, merged);
